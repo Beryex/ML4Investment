@@ -9,11 +9,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def model_training(x_train: pd.DataFrame, x_val: pd.DataFrame, y_train: pd.Series, y_val: pd.Series) -> lgb.Booster:
+def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> lgb.Booster:
     """ Time series modeling training pipeline """
     # 1. Data preparation for LightGBM
     train_set = lgb.Dataset(x_train, label=y_train, free_raw_data=False)
-    val_set = lgb.Dataset(x_val, label=y_val, reference=train_set, free_raw_data=False)
+    test_set = lgb.Dataset(x_test, label=y_test, reference=train_set, free_raw_data=False)
     
     # 2. Hyperparameter optimization with temporal validation
     def objective(trial: optuna.Trial) -> float:
@@ -45,7 +45,7 @@ def model_training(x_train: pd.DataFrame, x_val: pd.DataFrame, y_train: pd.Serie
                 params,
                 train_set=lgb.Dataset(cur_x_train, label=cur_y_train),
                 valid_sets=[lgb.Dataset(cur_x_val, label=cur_y_val)],
-                num_boost_round=trial.suggest_int('num_rounds', 50, 300),
+                num_boost_round=trial.suggest_int('num_rounds', 500, 1500),
                 callbacks=[
                     lgb.log_evaluation(False),
                 ]
@@ -74,8 +74,8 @@ def model_training(x_train: pd.DataFrame, x_val: pd.DataFrame, y_train: pd.Serie
     final_model = lgb.train(
         best_params,
         train_set=train_set,
-        valid_sets=[val_set],
-        num_boost_round=int(best_params['num_rounds']),
+        valid_sets=[test_set],
+        num_boost_round=int(best_params['num_rounds'] * 1.2),
         callbacks=[
             lgb.log_evaluation(period=100),
             lgb.record_evaluation(eval_result={}),
@@ -84,9 +84,9 @@ def model_training(x_train: pd.DataFrame, x_val: pd.DataFrame, y_train: pd.Serie
     logger.info("Model training completed")
     
     # 4. Model validation and feature analysis
-    val_pred = final_model.predict(x_val)
-    mae = mean_absolute_error(y_val, val_pred)
-    sign_accuracy = (np.sign(val_pred) == np.sign(y_val.to_numpy())).mean() * 100
+    y_pred = final_model.predict(x_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
     logger.info(f"Model validation - MAE: {mae:.4f} | Sign Accuracy: {sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
     
     # Feature importance analysis

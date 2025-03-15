@@ -6,7 +6,7 @@ import pandas_market_calendars as mcal
 logger = logging.getLogger(__name__)
 
 
-def fetch_trading_day_data(stock: str, period: str = '1mo', interval: str = '15m') -> pd.DataFrame:
+def fetch_trading_day_data(stock: str, period: str = '2y', interval: str = '1h') -> pd.DataFrame:
     """ Fetch trading day data for a given stock for the last given days with given interval """
     logger.info(f"Fetching data for {stock}") 
     data = yf.download(stock, period=period, interval=interval).tz_convert('America/New_York')

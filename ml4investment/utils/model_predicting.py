@@ -32,7 +32,6 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
         # Convert to 2D array even for single sample
         X = x_predict.values.reshape(1, -1)
         y_pred = model.predict(X, num_iteration=model.best_iteration)
-        logger.info(f"Prediction successful | Input shape: {x_predict.shape}")
     except Exception as e:
         logger.error(f"Prediction failed: {str(e)}")
         raise RuntimeError("Prediction error occurred") from e

@@ -11,20 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
-    """ Process 15-minute OHLCV data to create daily features and prediction target """
+    """ Process 1h OHLCV data to create daily features and prediction target """
     # 1. Preserve core price-volume columns
     price_volume = ['Open', 'High', 'Low', 'Close', 'Volume']
     df = df[price_volume].copy()
     
     # 2. Generate intraday technical indicators
     # Price momentum features
-    df['Returns_15min'] = df['Close'].pct_change()
-    df['MA10'] = df['Close'].rolling(10).mean()
+    df['Returns_1h'] = df['Close'].pct_change()
+    df['MA6'] = df['Close'].rolling(6).mean()
     df['RSI_14'] = _calculate_rsi(df['Close'], 14)
     
     # Volatility features
     df['ATR_14'] = _calculate_atr(df, 14)  # Average True Range
-    df['Bollinger_Width'] = (df['Close'].rolling(20).std() / df['MA10']) * 100
+    df['Bollinger_Width'] = (df['Close'].rolling(20).std() / df['MA6']) * 100
     
     # Volume-based features
     df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(24).mean()
@@ -33,14 +33,14 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # Time-session features
     morning_mask = df.index.time < pd.to_datetime('12:00').time()
-    df['Morning_Volume_Ratio'] = (df[morning_mask]['Volume'].rolling(8).sum() / 
-                                  df['Volume'].rolling(24).sum())
+    df['Morning_Volume_Ratio'] = (df[morning_mask]['Volume'].rolling(3).sum() / 
+                                  df['Volume'].rolling(6).sum())
     df['Afternoon_Return'] = (df['Close'].pct_change()
                              .between_time('13:00', '15:00')
-                             .rolling(4).mean())
+                             .rolling(2).mean())
     
     # Price-volume relationship
-    df['Price_Volume_Correlation'] = df['Close'].rolling(24).corr(df['Volume'])
+    df['Price_Volume_Correlation'] = df['Close'].rolling(6).corr(df['Volume'])
     
     # 3. Aggregate to daily timeframe
     aggregation_rules = {
@@ -49,8 +49,8 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         'Low': 'min', 
         'Close': 'last',
         'Volume': 'sum',
-        'Returns_15min': ['mean', 'std'],
-        'MA10': 'last',
+        'Returns_1h': ['mean', 'std'],
+        'MA6': 'last',
         'RSI_14': 'last',
         'ATR_14': 'mean',
         'Bollinger_Width': 'last',
@@ -68,9 +68,14 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     daily_df.columns = ['_'.join(col).strip() for col in daily_df.columns]
     
     # 4. Create lagged features
-    for base_col in ['RSI_14', 'MA10']:
-        for lag in [1, 3]:
-            daily_df[f'{base_col}_lag{lag}'] = daily_df[f'{base_col}_last'].shift(lag)
+    lag_mapping = {
+        'RSI_14': 'RSI_14_last',
+        'MA6': 'MA6_last',
+        'Volume_Spike': 'Volume_Spike_max'
+    }
+    for base_feature, aggregated_col in lag_mapping.items():
+        for lag in [1, 2, 3]:
+            daily_df[f'{base_feature}_lag{lag}'] = daily_df[aggregated_col].shift(lag)
     
     # 5. Define prediction target
     daily_df['Target'] = (daily_df['Open_first'].shift(-1) - daily_df['Open_first']).div(daily_df['Open_first']).round(4)
@@ -92,10 +97,12 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     feature_cols = [col for col in main_data.columns if col != 'Target']
     X = main_data[feature_cols]
     y = main_data['Target']
+    logger.info(f"Total processed samples: {X.shape[0]}")
+    logger.info(f"Number of features: {X.shape[1]}")
     
     # 4. Data processing pipeline
-    # 4.1 Missing value imputation (time-aware forward fill)
-    X = X.ffill().fillna(method='nearest')
+    # 4.1 Missing value imputation (time-aware forward fill and then backward fill if necessary) 
+    X = X.ffill().bfill()
     assert X.isnull().sum().sum() == 0, "Training data contains missing values"
     last_valid_values = X.iloc[-1]
     

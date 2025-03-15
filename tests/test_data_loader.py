@@ -3,7 +3,7 @@ import logging
 from ml4investment.utils.data_loader import fetch_trading_day_data
 from ml4investment.utils.logging import configure_logging
 
-configure_logging(env="test", file_name="test_feature_engineering.log")
+configure_logging(env="test", file_name="test_data_loader.log")
 logger = logging.getLogger("ml4investment.test")
 
 

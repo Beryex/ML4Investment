@@ -77,3 +77,4 @@ def configure_logging(env: str = "prod", file_name: str = None) -> None:
     config["root"]["handlers"] = ["console", file_handler_key]
 
     logging.config.dictConfig(config)
+    

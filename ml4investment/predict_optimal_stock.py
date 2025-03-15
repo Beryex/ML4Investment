@@ -2,6 +2,7 @@ import argparse
 import logging
 import pandas as pd
 from prettytable import PrettyTable
+from sklearn.preprocessing import RobustScaler
 
 from ml4investment.utils.seed import set_random_seed
 from ml4investment.utils.data_loader import fetch_trading_day_data
@@ -21,6 +22,13 @@ def predict_optimal_stock(stock_list, seed):
     set_random_seed(seed)
 
     # 1. Combine all stock data
+    stock_id_map = {stock: stock_code_to_id(stock) for stock in stock_list}
+    if len(stock_id_map.values()) != len(set(stock_id_map.values())):
+        logger.error(f"Stock mapping mismatch. Stock id number: {len(stock_id_map.values())}, Stock number: {len(set(stock_id_map.values()))}")
+        raise ValueError("Stock mapping mismatch.")
+    all_stock_ids = list(stock_id_map.values())
+    cat_type = pd.CategoricalDtype(categories=all_stock_ids)
+
     global_X_train, global_X_test = [], []
     global_y_train, global_y_test = [], []
     x_predict_dict = {}
@@ -31,9 +39,14 @@ def predict_optimal_stock(stock_list, seed):
         daily_features_data = calculate_features(fetched_data)
         cur_X_train, cur_X_test, cur_y_train, cur_y_test, cur_x_predict = process_features(daily_features_data)
 
-        cur_X_train['stock'] = stock
-        cur_X_test['stock'] = stock
-        cur_x_predict['stock'] = stock
+        stock_id = stock_id_map[stock]
+        cur_X_train['stock_id'] = stock_id
+        cur_X_test['stock_id'] = stock_id
+        cur_x_predict['stock_id'] = stock_id
+
+        cur_X_train['stock_id'] = cur_X_train['stock_id'].astype(cat_type)
+        cur_X_test['stock_id'] = cur_X_test['stock_id'].astype(cat_type)
+        cur_x_predict['stock_id'] = cur_x_predict['stock_id'].astype(cat_type)
 
         global_X_train.append(cur_X_train)
         global_X_test.append(cur_X_test)
@@ -45,14 +58,9 @@ def predict_optimal_stock(stock_list, seed):
     X_test = pd.concat(global_X_test)
     y_train = pd.concat(global_y_train)
     y_test = pd.concat(global_y_test)
-
-    X_train = pd.get_dummies(X_train, columns=['stock'])
-    X_test = pd.get_dummies(X_test, columns=['stock'])
-    for stock in x_predict_dict:
-        x_predict_dict[stock] = pd.get_dummies(x_predict_dict[stock], columns=['stock'])
     
     # 2. Train the model based on all stock data
-    model = model_training(X_train, X_test, y_train, y_test)
+    model = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'])
     
     # 3. Predict each stock using the trained model
     results_table = PrettyTable()
@@ -72,6 +80,11 @@ def predict_optimal_stock(stock_list, seed):
     logger.info("Prediction process completed.")
 
     return optimal_stock, optimal_ratio
+
+
+def stock_code_to_id(stock_code: str) -> int:
+    """ Change the stock string to the sum of ASCII value of each char within the stock code """
+    return sum(ord(c) for c in stock_code)
 
 
 if __name__ == "__main__":

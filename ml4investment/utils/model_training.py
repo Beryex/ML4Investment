@@ -9,11 +9,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> lgb.Booster:
+def model_training(x_train: pd.DataFrame, 
+                   x_test: pd.DataFrame, 
+                   y_train: pd.Series, 
+                   y_test: pd.Series, 
+                   categorical_features: list = None) -> lgb.Booster:
     """ Time series modeling training pipeline """
     # 1. Data preparation for LightGBM
-    train_set = lgb.Dataset(x_train, label=y_train, free_raw_data=False)
-    test_set = lgb.Dataset(x_test, label=y_test, reference=train_set, free_raw_data=False)
+    assert x_train['stock_id'].dtype.name == 'category'
+    assert x_test['stock_id'].dtype.name == 'category'
+    train_set = lgb.Dataset(x_train, 
+                            label=y_train, 
+                            categorical_feature=categorical_features, 
+                            free_raw_data=False)
+    test_set = lgb.Dataset(x_test, 
+                           label=y_test, 
+                           categorical_feature=categorical_features,
+                           reference=train_set, 
+                           free_raw_data=False)
     
     # 2. Hyperparameter optimization with temporal validation
     def objective(trial: optuna.Trial) -> float:
@@ -43,8 +56,12 @@ def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Seri
             
             model = lgb.train(
                 params,
-                train_set=lgb.Dataset(cur_x_train, label=cur_y_train),
-                valid_sets=[lgb.Dataset(cur_x_val, label=cur_y_val)],
+                train_set=lgb.Dataset(cur_x_train, 
+                                      label=cur_y_train,
+                                      categorical_feature=categorical_features),
+                valid_sets=[lgb.Dataset(cur_x_val, 
+                                        label=cur_y_val,
+                                        categorical_feature=categorical_features)],
                 num_boost_round=trial.suggest_int('num_rounds', 500, 1500),
                 callbacks=[
                     lgb.log_evaluation(False),

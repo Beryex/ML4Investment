@@ -9,11 +9,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Series, y_test: pd.Series) -> lgb.Booster:
+def model_training(x_train: pd.DataFrame, 
+                   x_test: pd.DataFrame, 
+                   y_train: pd.Series, 
+                   y_test: pd.Series, 
+                   categorical_features: list = None,
+                   best_params: dict = None) -> lgb.Booster:
     """ Time series modeling training pipeline """
     # 1. Data preparation for LightGBM
-    train_set = lgb.Dataset(x_train, label=y_train, free_raw_data=False)
-    test_set = lgb.Dataset(x_test, label=y_test, reference=train_set, free_raw_data=False)
+    if 'stock_id' in x_train.columns:
+        assert x_train['stock_id'].dtype.name == 'category'
+
+    train_set = lgb.Dataset(x_train, 
+                            label=y_train, 
+                            categorical_feature=categorical_features, 
+                            free_raw_data=False)
+    test_set = lgb.Dataset(x_test, 
+                           label=y_test, 
+                           categorical_feature=categorical_features,
+                           reference=train_set, 
+                           free_raw_data=False)
     
     # 2. Hyperparameter optimization with temporal validation
     def objective(trial: optuna.Trial) -> float:
@@ -26,11 +41,11 @@ def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Seri
             'drop_rate': trial.suggest_float('drop_rate', 0.05, 0.15),
             'max_drop': trial.suggest_int('max_drop', 10, 30),
             'skip_drop': trial.suggest_float('skip_drop', 0.4, 0.8),
-            'num_leaves': trial.suggest_int('num_leaves', 16, 64),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.2, log=True),
+            'num_leaves': trial.suggest_int('num_leaves', 32, 128),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.15, log=True),
             'feature_fraction': trial.suggest_float('feature_fraction', 0.6, 1.0),
             'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 10.0, log=True),
-            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 10, 50),
+            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 50, 200),
             'force_row_wise': True
         }
         
@@ -43,9 +58,13 @@ def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Seri
             
             model = lgb.train(
                 params,
-                train_set=lgb.Dataset(cur_x_train, label=cur_y_train),
-                valid_sets=[lgb.Dataset(cur_x_val, label=cur_y_val)],
-                num_boost_round=trial.suggest_int('num_rounds', 500, 1500),
+                train_set=lgb.Dataset(cur_x_train, 
+                                      label=cur_y_train,
+                                      categorical_feature=categorical_features),
+                valid_sets=[lgb.Dataset(cur_x_val, 
+                                        label=cur_y_val,
+                                        categorical_feature=categorical_features)],
+                num_boost_round=trial.suggest_int('num_rounds', 800, 2500),
                 callbacks=[
                     lgb.log_evaluation(False),
                 ]
@@ -55,27 +74,32 @@ def model_training(x_train: pd.DataFrame, x_test: pd.DataFrame, y_train: pd.Seri
             
         return np.mean(scores)
 
-    logger.info("Begin hyperparameter optimization")
-    study = optuna.create_study(direction='minimize')
-    study.optimize(objective, n_trials=100, timeout=7200)
-    logger.info("Hyperparameter optimization completed")
+    if best_params is None:
+        logger.info("Begin hyperparameter optimization")
+        study = optuna.create_study(direction='minimize')
+        study.optimize(objective, n_trials=100, timeout=7200)
+        logger.info("Hyperparameter optimization completed")
+
+        best_params = study.best_params.copy()
+        best_params.update({
+            'verbosity': 1,
+            'force_row_wise': True,  # Ensure reproducibility
+            'xgboost_dart_mode': True
+        })
+    else:
+        logger.info("Load input hyperparameter")
+        best_params = best_params.copy()
+        best_params.setdefault('verbosity', 1)
+        best_params.setdefault('force_row_wise', True)
+        best_params.setdefault('xgboost_dart_mode', True)
     
-    # 3. Final model training with best parameters
-    best_params = study.best_params.copy()
-    best_params.update({
-        'objective': 'regression_l1',
-        'metric': 'mae',
-        'verbosity': 1,
-        'force_row_wise': True,  # Ensure reproducibility
-        'xgboost_dart_mode': True
-    })
-    
+    # 3. Final model training with best parameters    
     logger.info("Begin model training with optimized parameters")
     final_model = lgb.train(
         best_params,
         train_set=train_set,
         valid_sets=[test_set],
-        num_boost_round=int(best_params['num_rounds'] * 1.2),
+        num_boost_round=int(best_params['num_rounds'] * 1.5),
         callbacks=[
             lgb.log_evaluation(period=100),
             lgb.record_evaluation(eval_result={}),

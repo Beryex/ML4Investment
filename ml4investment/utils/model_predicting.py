@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     """ Prediction function with validation checks """
     # 1. Feature validation
+    if 'stock_id' in x_predict.columns:
+        assert x_predict['stock_id'].dtype.name == 'category'
+        
     expected_features = model.feature_name()
     received_features = x_predict.columns.tolist()
     
@@ -21,6 +24,9 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     if not np.all(expected_features == received_features):
         x_predict = x_predict.reindex(columns=expected_features)
         logger.warning("Feature order mismatch detected, auto-corrected column order")
+    
+    if not x_predict.columns.equals(pd.Index(expected_features)):
+        x_predict = x_predict.reindex(columns=expected_features)
 
     # 2. Data type consistency check
     if not isinstance(x_predict, pd.DataFrame):

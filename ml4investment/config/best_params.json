@@ -1,0 +1,11 @@
+{
+    "drop_rate": 0.1009017332281779, 
+    "max_drop": 15, 
+    "skip_drop": 0.5623915113898863, 
+    "num_leaves": 46, 
+    "learning_rate": 0.1328708374828494, 
+    "feature_fraction": 0.6274640715700674, 
+    "lambda_l1": 0.05290290741623796, 
+    "min_data_in_leaf": 111, 
+    "num_rounds": 2103
+}

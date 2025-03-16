@@ -9,10 +9,11 @@ logger = logging.getLogger(__name__)
 def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     """ Prediction function with validation checks """
     # 1. Feature validation
+    if 'stock_id' in x_predict.columns:
+        assert x_predict['stock_id'].dtype.name == 'category'
+        
     expected_features = model.feature_name()
     received_features = x_predict.columns.tolist()
-    
-    assert x_predict['stock_id'].dtype.name == 'category'
     
     if len(expected_features) != len(received_features):
         missing = set(expected_features) - set(received_features)

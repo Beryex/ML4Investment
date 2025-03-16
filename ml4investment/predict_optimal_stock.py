@@ -2,7 +2,7 @@ import argparse
 import logging
 import pandas as pd
 from prettytable import PrettyTable
-from sklearn.preprocessing import RobustScaler
+import json
 
 from ml4investment.utils.seed import set_random_seed
 from ml4investment.utils.data_loader import fetch_trading_day_data
@@ -15,7 +15,7 @@ configure_logging(env="prod", file_name="predict_optimal_stock.log")
 logger = logging.getLogger("ml4investment.test")
 
 
-def predict_optimal_stock(stock_list, seed):
+def predict_optimal_stock(stock_list: list, best_params: dict, seed: int):
     """ Predict the optimal stock with the highest price change for the given stocks """
     logger.info(f"Start predicting stocks: {stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
@@ -60,7 +60,7 @@ def predict_optimal_stock(stock_list, seed):
     y_test = pd.concat(global_y_test)
     
     # 2. Train the model based on all stock data
-    model = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'])
+    model = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], best_params=best_params)
     
     # 3. Predict each stock using the trained model
     results_table = PrettyTable()
@@ -84,17 +84,19 @@ def predict_optimal_stock(stock_list, seed):
 
 def stock_code_to_id(stock_code: str) -> int:
     """ Change the stock string to the sum of ASCII value of each char within the stock code """
-    return sum(ord(c) for c in stock_code)
+    return sum(ord(c) * 256 ** i for i, c in enumerate(reversed(stock_code)))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stocks", "-ss", type=str, default="AMZN,MSFT,AAPL,GOOGL,TSLA,META,INTC,AMD,NVDA,BABA,TCEHY,JD")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--target_stocks", "-ts", type=str, default=None)
+    parser.add_argument("--optimize_from_scratch", "-ofs", action='store_true', default=False)
+    parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()
 
-    stock_list = args.stocks.split(",")
+    stock_list = args.target_stocks.split(",") if args.target_stocks else json.load(open('config/target_stocks.json', 'r'))["target_stocks"]
+    best_params = None if args.optimize_from_scratch else json.load(open('config/best_params.json', 'r'))
     seed = args.seed
 
-    predict_optimal_stock(stock_list, seed)
+    predict_optimal_stock(stock_list, best_params, seed)

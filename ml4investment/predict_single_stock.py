@@ -1,6 +1,7 @@
 import argparse
 import logging
 import pandas as pd
+import json
 
 from ml4investment.utils.seed import set_random_seed
 from ml4investment.utils.data_loader import fetch_trading_day_data
@@ -13,7 +14,7 @@ configure_logging(env="prod", file_name="predict_single_stock.log")
 logger = logging.getLogger("ml4investment.test")
 
 
-def predict_single_stock(stock, seed):
+def predict_single_stock(stock: str, best_params: dict, seed: int):
     """ Predict the price change for the given stock """
     logger.info(f"Start predicting stock: {stock}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
@@ -27,12 +28,12 @@ def predict_single_stock(stock, seed):
     X_train, X_test, y_train, y_test, x_predict = process_features(daily_features_data)
 
     # 3. Model training
-    model = model_training(X_train, X_test, y_train, y_test)
+    model = model_training(X_train, X_test, y_train, y_test, best_params=best_params)
 
     # 4. Model prediction
     predict_ratio = model_predict(model, x_predict)
 
-    logger.info(f"Predicted price change for {stock}: {predict_ratio:+.2%}")
+    logger.info(f"Predicted price change: {predict_ratio:+.2%}")
     logger.info("Prediction process completed.")
 
     return predict_ratio
@@ -41,11 +42,13 @@ def predict_single_stock(stock, seed):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--stock", type=str, default="MSFT")
+    parser.add_argument("--optimize_from_scratch", "-ofs", action='store_true', default=False)
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()
 
     stock = args.stock
+    best_params = None if args.optimize_from_scratch else json.load(open('config/best_params.json', 'r'))
     seed = args.seed
 
-    predict_single_stock(stock, seed)
+    predict_single_stock(stock, best_params, seed)

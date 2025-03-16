@@ -20,11 +20,11 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     # Price momentum features
     df['Returns_1h'] = df['Close'].pct_change()
     df['MA6'] = df['Close'].rolling(6).mean()
-    df['RSI_14'] = _calculate_rsi(df['Close'], 14)
+    df['RSI_91'] = _calculate_rsi(df['Close'], 91)
     
     # Volatility features
-    df['ATR_14'] = _calculate_atr(df, 14)  # Average True Range
-    df['Bollinger_Width'] = (df['Close'].rolling(20).std() / df['MA6']) * 100
+    df['ATR_91'] = _calculate_atr(df, 91)  # Average True Range
+    df['Bollinger_Width'] = (df['Close'].rolling(18).std() / df['Close'].rolling(18).mean()) * 100
     
     # Volume-based features
     df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(24).mean()
@@ -51,8 +51,8 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         'Volume': 'sum',
         'Returns_1h': ['mean', 'std'],
         'MA6': 'last',
-        'RSI_14': 'last',
-        'ATR_14': 'mean',
+        'RSI_91': 'last',
+        'ATR_91': 'mean',
         'Bollinger_Width': 'last',
         'Volume_Spike': 'max',
         'Intraday_Range': 'last',
@@ -69,7 +69,7 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # 4. Create lagged features
     lag_mapping = {
-        'RSI_14': 'RSI_14_last',
+        'RSI_91': 'RSI_91_last',
         'MA6': 'MA6_last',
         'Volume_Spike': 'Volume_Spike_max'
     }
@@ -77,8 +77,8 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         for lag in [1, 2, 3]:
             daily_df[f'{base_feature}_lag{lag}'] = daily_df[aggregated_col].shift(lag)
     
-    # 5. Define prediction target
-    daily_df['Target'] = (daily_df['Open_first'].shift(-1) - daily_df['Open_first']).div(daily_df['Open_first']).round(4)
+    # 5. Define prediction target as open price incre two days later
+    daily_df['Target'] = (daily_df['Open_first'].shift(-2) - daily_df['Open_first'].shift(-1)) / daily_df['Open_first'].shift(-1)
     
     return daily_df
 

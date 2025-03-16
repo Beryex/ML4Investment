@@ -130,7 +130,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--target_stocks", "-ts", type=str, default=None)
     parser.add_argument("--optimize_from_scratch", "-ofs", action='store_true', default=False)
-    parser.add_argument("--backtest_day_number", "-bdn", type=int, default=5)
+    parser.add_argument("--backtest_day_number", "-bdn", type=int, default=30)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()

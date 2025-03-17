@@ -12,35 +12,37 @@ logger = logging.getLogger(__name__)
 
 def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     """ Process 1h OHLCV data to create daily features and prediction target """
+    """ 假设数据都是在收盘后立刻爬取,所有数据间隔1个小时 """
     # 1. Preserve core price-volume columns
     price_volume = ['Open', 'High', 'Low', 'Close', 'Volume']
     df = df[price_volume].copy()
     
     # 2. Generate intraday technical indicators
     # Price momentum features
+    df['next_open'] = df['Open'].shift(-1)
     df['Returns_1h'] = df['Close'].pct_change()
-    df['MA6'] = df['Close'].rolling(6).mean()
-    df['RSI_14'] = _calculate_rsi(df['Close'], 14)
+    df['MA7'] = df['Close'].rolling(7).mean()
+    df['RSI_91'] = _calculate_rsi(df['Close'], 91)
     
     # Volatility features
-    df['ATR_14'] = _calculate_atr(df, 14)  # Average True Range
-    df['Bollinger_Width'] = (df['Close'].rolling(20).std() / df['MA6']) * 100
+    df['ATR_91'] = _calculate_atr(df, 91)  # Average True Range
+    df['Bollinger_Width'] = (df['Close'].rolling(21).std() / df['Close'].rolling(21).mean()) * 100
     
     # Volume-based features
-    df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(24).mean()
+    df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(21).mean()
     df['Intraday_Range'] = (df['High'] - df['Low']) / df['Open']
     df['OBV'] = _calculate_obv(df)
     
     # Time-session features
     morning_mask = df.index.time < pd.to_datetime('12:00').time()
     df['Morning_Volume_Ratio'] = (df[morning_mask]['Volume'].rolling(3).sum() / 
-                                  df['Volume'].rolling(6).sum())
+                                  df['Volume'].rolling(7).sum())
     df['Afternoon_Return'] = (df['Close'].pct_change()
-                             .between_time('13:00', '15:00')
-                             .rolling(2).mean())
+                             .between_time('13:00', '16:00')
+                             .rolling(3).mean())
     
     # Price-volume relationship
-    df['Price_Volume_Correlation'] = df['Close'].rolling(6).corr(df['Volume'])
+    df['Price_Volume_Correlation'] = df['Close'].rolling(7).corr(df['Volume'])
     
     # 3. Aggregate to daily timeframe
     aggregation_rules = {
@@ -49,10 +51,11 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         'Low': 'min', 
         'Close': 'last',
         'Volume': 'sum',
+        'next_open': 'first',
         'Returns_1h': ['mean', 'std'],
-        'MA6': 'last',
-        'RSI_14': 'last',
-        'ATR_14': 'mean',
+        'MA7': 'last',
+        'RSI_91': 'last',
+        'ATR_91': 'mean',
         'Bollinger_Width': 'last',
         'Volume_Spike': 'max',
         'Intraday_Range': 'last',
@@ -69,8 +72,8 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # 4. Create lagged features
     lag_mapping = {
-        'RSI_14': 'RSI_14_last',
-        'MA6': 'MA6_last',
+        'RSI_91': 'RSI_91_last',
+        'MA7': 'MA7_last',
         'Volume_Spike': 'Volume_Spike_max'
     }
     for base_feature, aggregated_col in lag_mapping.items():
@@ -78,7 +81,10 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
             daily_df[f'{base_feature}_lag{lag}'] = daily_df[aggregated_col].shift(lag)
     
     # 5. Define prediction target
-    daily_df['Target'] = (daily_df['Open_first'].shift(-1) - daily_df['Open_first']).div(daily_df['Open_first']).round(4)
+    next_day_first_open = daily_df['Open_first'].shift(-1)
+    next_day_second_open = daily_df['next_open_first'].shift(-1)
+    daily_df['Target'] = (next_day_second_open - next_day_first_open) / next_day_first_open
+    daily_df = daily_df.drop(columns=['next_open_first'])
     
     return daily_df
 

@@ -1,11 +1,14 @@
 {
-    "drop_rate": 0.11673741404394233, 
-    "max_drop": 11, 
-    "skip_drop": 0.3102011564262341, 
-    "num_leaves": 71, 
-    "learning_rate": 0.007736388294143043, 
-    "feature_fraction": 0.5272037649325723, 
-    "lambda_l1": 5.75905872715863e-07, 
-    "min_data_in_leaf": 46, 
-    "num_rounds": 637
+    "drop_rate": 0.1045960563194514, 
+    "max_drop": 13, 
+    "skip_drop": 0.2497554869980871, 
+    "num_leaves": 58, 
+    "learning_rate": 0.010345804912727062, 
+    "feature_fraction": 0.6380580525605068, 
+    "lambda_l1": 1.4734069374843965e-05, 
+    "min_data_in_leaf": 36, 
+    "num_rounds": 772,
+    "verbosity": -1,
+    "force_row_wise": true,
+    "xgboost_dart_mode": true
 }

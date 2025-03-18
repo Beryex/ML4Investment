@@ -11,7 +11,7 @@ from ml4investment.utils.model_training import model_training
 from ml4investment.utils.model_predicting import model_predict
 
 configure_logging(env="prod", file_name="predict_single_stock.log")
-logger = logging.getLogger("ml4investment.test")
+logger = logging.getLogger("ml4investment.predict_single_stock")
 
 
 def predict_single_stock(stock: str, best_params: dict, seed: int):

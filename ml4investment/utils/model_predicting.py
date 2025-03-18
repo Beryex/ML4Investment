@@ -45,7 +45,4 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     # 4. Output formatting
     prediction = round(float(y_pred[0]), 4)  # Align with target precision
     
-    # 5. Prediction metadata logging
-    logger.info(f"Generated prediction: {prediction}")
-    
     return prediction

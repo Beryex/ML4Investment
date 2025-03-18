@@ -12,14 +12,12 @@ logger = logging.getLogger(__name__)
 
 def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     """ Process 1h OHLCV data to create daily features and prediction target """
-    """ 假设数据都是在收盘后立刻爬取,所有数据间隔1个小时 """
     # 1. Preserve core price-volume columns
     price_volume = ['Open', 'High', 'Low', 'Close', 'Volume']
     df = df[price_volume].copy()
     
     # 2. Generate intraday technical indicators
     # Price momentum features
-    df['next_open'] = df['Open'].shift(-1)
     df['Returns_1h'] = df['Close'].pct_change()
     df['MA7'] = df['Close'].rolling(7).mean()
     df['RSI_91'] = _calculate_rsi(df['Close'], 91)
@@ -51,7 +49,6 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         'Low': 'min', 
         'Close': 'last',
         'Volume': 'sum',
-        'next_open': 'first',
         'Returns_1h': ['mean', 'std'],
         'MA7': 'last',
         'RSI_91': 'last',
@@ -81,10 +78,10 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
             daily_df[f'{base_feature}_lag{lag}'] = daily_df[aggregated_col].shift(lag)
     
     # 5. Define prediction target
-    next_day_first_open = daily_df['Open_first'].shift(-1)
-    next_day_second_open = daily_df['next_open_first'].shift(-1)
-    daily_df['Target'] = (next_day_second_open - next_day_first_open) / next_day_first_open
-    daily_df = daily_df.drop(columns=['next_open_first'])
+    daily_df['Target'] = (daily_df['Open_first'].shift(-2) - daily_df['Open_first'].shift(-1)) / daily_df['Open_first'].shift(-1)
+    
+    # 6. Drop the last row (today's incomplete data)
+    daily_df = daily_df.drop(daily_df.index[-1])
     
     return daily_df
 
@@ -103,8 +100,6 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     feature_cols = [col for col in main_data.columns if col != 'Target']
     X = main_data[feature_cols]
     y = main_data['Target']
-    logger.info(f"Total processed samples: {X.shape[0]}")
-    logger.info(f"Number of features: {X.shape[1]}")
     
     # 4. Data processing pipeline
     # 4.1 Missing value imputation (time-aware forward fill and then backward fill if necessary) 
@@ -114,7 +109,7 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     
     # 4.2 Winsorization (5%-95% quantile clipping)
     quantiles = X.quantile([0.05, 0.95])
-    X = X.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1)
+    X = X.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1).infer_objects(copy=False)
     
     # 4.3 Robust scaling (median/IQR normalization)
     scaler = RobustScaler()
@@ -130,7 +125,7 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     assert x_predict.isnull().sum().sum() == 0, "Predicting data contains missing values"
     
     # Apply training-based quantile clipping
-    x_predict = x_predict.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1)
+    x_predict = x_predict.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1).infer_objects(copy=False)
     
     # Scale with pre-fit scaler
     x_predict = pd.DataFrame(scaler.transform(x_predict), columns=x_predict.columns.tolist(), index=x_predict.index)

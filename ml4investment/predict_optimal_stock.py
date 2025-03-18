@@ -12,7 +12,7 @@ from ml4investment.utils.model_training import model_training
 from ml4investment.utils.model_predicting import model_predict
 
 configure_logging(env="prod", file_name="predict_optimal_stock.log")
-logger = logging.getLogger("ml4investment.test")
+logger = logging.getLogger("ml4investment.predict_optimal_stock")
 
 
 def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_number: int, seed: int):
@@ -66,7 +66,14 @@ def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_numb
     X_test = pd.concat(global_X_test)
     y_train = pd.concat(global_y_train)
     y_test = pd.concat(global_y_test)
-    
+
+    logger.info(f"Oldest date in training data: {X_train.index.min()}")
+    logger.info(f"Newest date in training data: {X_train.index.max()}")
+    logger.info(f"Oldest date in testing data: {X_test.index.min()}")
+    logger.info(f"Newest date in testing data: {X_test.index.max()}")
+    logger.info(f"Total processed samples: {X_train.shape[0] + X_test.shape[0]}")
+    logger.info(f"Number of features: {X_train.shape[1]}")
+
     # 2. Train the model based on all stock data
     model = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], best_params=best_params)
     
@@ -82,10 +89,20 @@ def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_numb
     optimal_ratio = float('-inf')
     optimal_stock = ""
     backtest_predictions = {}  # first level days, second level stock
+    today_predictions = {}
     for i in range(-backtest_day_number, 0):
         backtest_predictions[i] = {}
 
     for stock in stock_list:
+        # Today predicting
+        today_pred = model_predict(model, x_predict_dict[stock])
+        today_predictions[stock] = today_pred
+
+        if today_pred > optimal_ratio:
+            optimal_ratio = today_pred
+            optimal_stock = stock
+
+    for stock in sorted(today_predictions, key=today_predictions.get, reverse=True):
         row = [stock]
         # backtesting
         for i in range(-backtest_day_number, 0):
@@ -94,17 +111,13 @@ def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_numb
             row.append(f"{price_change_pred:+.2%}")
             row.append(f"{price_change_actual:+.2%}")
             backtest_predictions[i][stock] = price_change_pred
-        
-        # Today predicting
-        today_pred = model_predict(model, x_predict_dict[stock])
-        row.append(f"{today_pred:+.2%}")
-        
-        if today_pred > optimal_ratio:
-            optimal_ratio = today_pred
-            optimal_stock = stock
+
+        row.append(f"{today_predictions[stock]:+.2%}")
         
         results_table.add_row(row, divider=True)
-    
+
+    logger.info(results_table.get_string(title=f"Predict price changes for stocks"))
+
     gain_predict = 1
     gain_actual = 1
     for i in range(-backtest_day_number, 0):
@@ -112,10 +125,15 @@ def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_numb
         if backtest_predictions[i][cur_optimal_stock] > 0:
             gain_predict *= (1 + backtest_predictions[i][cur_optimal_stock])
             gain_actual *= (1 + y_backtest_dict[i][cur_optimal_stock])
+        logger.info(
+            f"Backtesting for {i} day: "
+            f"Predicted optimal stock: {cur_optimal_stock} "
+            f"with predicted price change: {backtest_predictions[i][cur_optimal_stock]:+.2%}, "
+            f"actual price change: {y_backtest_dict[i][cur_optimal_stock]:+.2%}"
+        )
 
-    logger.info(results_table.get_string(title=f"Predict price changes for stocks"))
     logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}")
-    logger.info(f"Suggested optimal stock: {optimal_stock} with predicted price change: {optimal_ratio:+.2%}")
+    logger.info(f"Suggested optimal stock: {optimal_stock} with predicted price change: {optimal_ratio:+.2%}, based on data in: {str(x_predict_dict[optimal_stock].index[0])}")
     logger.info("Prediction process completed.")
 
     return optimal_stock, optimal_ratio

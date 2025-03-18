@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 def fetch_trading_day_data(stock: str, period: str = '2y', interval: str = '1h') -> pd.DataFrame:
     """ Fetch trading day data for a given stock for the last given days with given interval """
     logger.info(f"Fetching data for {stock}") 
-    data = yf.download(stock, period=period, interval=interval).tz_convert('America/New_York')
+    data = yf.download(stock, period=period, interval=interval, auto_adjust=True, progress=False).tz_convert('America/New_York')
     
     assert not data.empty, f"No data fetched for {stock}"
     data.columns = data.columns.droplevel(1) if isinstance(data.columns, pd.MultiIndex) else data.columns

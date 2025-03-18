@@ -77,21 +77,19 @@ def model_training(x_train: pd.DataFrame,
     if best_params is None:
         logger.info("Begin hyperparameter optimization")
         study = optuna.create_study(direction='minimize')
-        study.optimize(objective, n_trials=100, timeout=7200)
+        study.optimize(objective, n_trials=300, timeout=9000)
         logger.info("Hyperparameter optimization completed")
 
         best_params = study.best_params.copy()
         best_params.update({
-            'verbosity': 1,
             'force_row_wise': True,  # Ensure reproducibility
             'xgboost_dart_mode': True
         })
+        logger.info(f"Best parameters: {best_params}")
+
     else:
         logger.info("Load input hyperparameter")
         best_params = best_params.copy()
-        best_params.setdefault('verbosity', 1)
-        best_params.setdefault('force_row_wise', True)
-        best_params.setdefault('xgboost_dart_mode', True)
     
     # 3. Final model training with best parameters    
     logger.info("Begin model training with optimized parameters")
@@ -101,8 +99,7 @@ def model_training(x_train: pd.DataFrame,
         valid_sets=[test_set],
         num_boost_round=int(best_params['num_rounds'] * 1.5),
         callbacks=[
-            lgb.log_evaluation(period=100),
-            lgb.record_evaluation(eval_result={}),
+            lgb.log_evaluation(False),
         ]
     )
     logger.info("Model training completed")

@@ -49,18 +49,25 @@ def configure_logging(env: str = "prod", file_name: str = None) -> None:
             "level": "DEBUG" if env in ("test", "dev") else "INFO"
         },
         "loggers": {
-            # only allow WARNING or above for third-party loggers
             "yfinance": {
                 "level": "WARNING",
-                "propagate": False
+                "propagate": True
             },
             "peewee": {
                 "level": "WARNING",
-                "propagate": False
+                "propagate": True
             },
             "urllib3": {
                 "level": "WARNING",
-                "propagate": False
+                "propagate": True
+            },
+            "optuna": {
+                "level": "INFO",
+                "propagate": True,
+            },
+            "pandas": {
+                "level": "WARNING",
+                "propagate": True
             }
         }
     }

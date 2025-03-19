@@ -12,10 +12,10 @@ from ml4investment.utils.model_training import model_training
 from ml4investment.utils.model_predicting import model_predict
 
 configure_logging(env="prod", file_name="predict_optimal_stock.log")
-logger = logging.getLogger("ml4investment.test")
+logger = logging.getLogger("ml4investment.predict_optimal_stock")
 
 
-def predict_optimal_stock(stock_list: list, best_params: dict, seed: int):
+def predict_optimal_stock(stock_list: list, best_params: dict, backtest_day_number: int, seed: int):
     """ Predict the optimal stock with the highest price change for the given stocks """
     logger.info(f"Start predicting stocks: {stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
@@ -31,6 +31,11 @@ def predict_optimal_stock(stock_list: list, best_params: dict, seed: int):
 
     global_X_train, global_X_test = [], []
     global_y_train, global_y_test = [], []
+    x_backtest_dict = {}    # first level days, second level stock
+    y_backtest_dict = {}
+    for i in range(-backtest_day_number, 0):
+        x_backtest_dict[i] = {}
+        y_backtest_dict[i] = {}
     x_predict_dict = {}
     
     for stock in stock_list:
@@ -52,31 +57,83 @@ def predict_optimal_stock(stock_list: list, best_params: dict, seed: int):
         global_X_test.append(cur_X_test)
         global_y_train.append(cur_y_train)
         global_y_test.append(cur_y_test)
+        for i in range(-backtest_day_number, 0):
+            x_backtest_dict[i][stock] = cur_X_test.iloc[[i]]
+            y_backtest_dict[i][stock] = cur_y_test.iloc[i]
         x_predict_dict[stock] = cur_x_predict
     
     X_train = pd.concat(global_X_train)
     X_test = pd.concat(global_X_test)
     y_train = pd.concat(global_y_train)
     y_test = pd.concat(global_y_test)
-    
+
+    logger.info(f"Oldest date in training data: {X_train.index.min()}")
+    logger.info(f"Newest date in training data: {X_train.index.max()}")
+    logger.info(f"Oldest date in testing data: {X_test.index.min()}")
+    logger.info(f"Newest date in testing data: {X_test.index.max()}")
+    logger.info(f"Total processed samples: {X_train.shape[0] + X_test.shape[0]}")
+    logger.info(f"Number of features: {X_train.shape[1]}")
+
     # 2. Train the model based on all stock data
     model = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], best_params=best_params)
     
     # 3. Predict each stock using the trained model
     results_table = PrettyTable()
-    results_table.field_names = ["Stock", "Predicted Price Change"]
-    
+    field_names = ["Stock"]
+    for i in range(-backtest_day_number, 0):
+        field_names.append(f"{i}_day_price_change_predict")
+        field_names.append(f"{i}_day_price_change_actual")
+    field_names.append("Today_price_predict")
+    results_table.field_names = field_names
+
     optimal_ratio = float('-inf')
     optimal_stock = ""
-    for stock, x_predict in x_predict_dict.items():
-        predict_ratio = model_predict(model, x_predict)
-        results_table.add_row([stock, predict_ratio], divider=True)
-        if predict_ratio > optimal_ratio:
-            optimal_ratio = predict_ratio
+    backtest_predictions = {}  # first level days, second level stock
+    today_predictions = {}
+    for i in range(-backtest_day_number, 0):
+        backtest_predictions[i] = {}
+
+    for stock in stock_list:
+        # Today predicting
+        today_pred = model_predict(model, x_predict_dict[stock])
+        today_predictions[stock] = today_pred
+
+        if today_pred > optimal_ratio:
+            optimal_ratio = today_pred
             optimal_stock = stock
 
-    logger.info(results_table.get_string(title=f"Predict price changes for stocks: {stock_list}"))
-    logger.info(f"Suggested optimal stock: {optimal_stock} with predicted price change: {optimal_ratio:+.2%}")
+    for stock in sorted(today_predictions, key=today_predictions.get, reverse=True):
+        row = [stock]
+        # backtesting
+        for i in range(-backtest_day_number, 0):
+            price_change_pred = model_predict(model, x_backtest_dict[i][stock])
+            price_change_actual = y_backtest_dict[i][stock]
+            row.append(f"{price_change_pred:+.2%}")
+            row.append(f"{price_change_actual:+.2%}")
+            backtest_predictions[i][stock] = price_change_pred
+
+        row.append(f"{today_predictions[stock]:+.2%}")
+        
+        results_table.add_row(row, divider=True)
+
+    logger.info(results_table.get_string(title=f"Predict price changes for stocks"))
+
+    gain_predict = 1
+    gain_actual = 1
+    for i in range(-backtest_day_number, 0):
+        cur_optimal_stock = max(backtest_predictions[i], key=backtest_predictions[i].get)
+        if backtest_predictions[i][cur_optimal_stock] > 0:
+            gain_predict *= (1 + backtest_predictions[i][cur_optimal_stock])
+            gain_actual *= (1 + y_backtest_dict[i][cur_optimal_stock])
+        logger.info(
+            f"Backtesting for {i} day: "
+            f"Predicted optimal stock: {cur_optimal_stock} "
+            f"with predicted price change: {backtest_predictions[i][cur_optimal_stock]:+.2%}, "
+            f"actual price change: {y_backtest_dict[i][cur_optimal_stock]:+.2%}"
+        )
+
+    logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}")
+    logger.info(f"Suggested optimal stock: {optimal_stock} with predicted price change: {optimal_ratio:+.2%}, based on data in: {str(x_predict_dict[optimal_stock].index[0])}")
     logger.info("Prediction process completed.")
 
     return optimal_stock, optimal_ratio
@@ -91,12 +148,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--target_stocks", "-ts", type=str, default=None)
     parser.add_argument("--optimize_from_scratch", "-ofs", action='store_true', default=False)
+    parser.add_argument("--backtest_day_number", "-bdn", type=int, default=5)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()
 
     stock_list = args.target_stocks.split(",") if args.target_stocks else json.load(open('config/target_stocks.json', 'r'))["target_stocks"]
     best_params = None if args.optimize_from_scratch else json.load(open('config/best_params.json', 'r'))
+    backtest_day_number = args.backtest_day_number
     seed = args.seed
 
-    predict_optimal_stock(stock_list, best_params, seed)
+    predict_optimal_stock(stock_list, best_params, backtest_day_number, seed)

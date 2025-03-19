@@ -19,28 +19,28 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     # 2. Generate intraday technical indicators
     # Price momentum features
     df['Returns_1h'] = df['Close'].pct_change()
-    df['MA6'] = df['Close'].rolling(6).mean()
-    df['RSI_14'] = _calculate_rsi(df['Close'], 14)
+    df['MA7'] = df['Close'].rolling(7).mean()
+    df['RSI_91'] = _calculate_rsi(df['Close'], 91)
     
     # Volatility features
-    df['ATR_14'] = _calculate_atr(df, 14)  # Average True Range
-    df['Bollinger_Width'] = (df['Close'].rolling(20).std() / df['MA6']) * 100
+    df['ATR_91'] = _calculate_atr(df, 91)  # Average True Range
+    df['Bollinger_Width'] = (df['Close'].rolling(21).std() / df['Close'].rolling(21).mean()) * 100
     
     # Volume-based features
-    df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(24).mean()
+    df['Volume_Spike'] = df['Volume'] / df['Volume'].rolling(21).mean()
     df['Intraday_Range'] = (df['High'] - df['Low']) / df['Open']
     df['OBV'] = _calculate_obv(df)
     
     # Time-session features
     morning_mask = df.index.time < pd.to_datetime('12:00').time()
     df['Morning_Volume_Ratio'] = (df[morning_mask]['Volume'].rolling(3).sum() / 
-                                  df['Volume'].rolling(6).sum())
+                                  df['Volume'].rolling(7).sum())
     df['Afternoon_Return'] = (df['Close'].pct_change()
-                             .between_time('13:00', '15:00')
-                             .rolling(2).mean())
+                             .between_time('13:00', '16:00')
+                             .rolling(3).mean())
     
     # Price-volume relationship
-    df['Price_Volume_Correlation'] = df['Close'].rolling(6).corr(df['Volume'])
+    df['Price_Volume_Correlation'] = df['Close'].rolling(7).corr(df['Volume'])
     
     # 3. Aggregate to daily timeframe
     aggregation_rules = {
@@ -50,9 +50,9 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
         'Close': 'last',
         'Volume': 'sum',
         'Returns_1h': ['mean', 'std'],
-        'MA6': 'last',
-        'RSI_14': 'last',
-        'ATR_14': 'mean',
+        'MA7': 'last',
+        'RSI_91': 'last',
+        'ATR_91': 'mean',
         'Bollinger_Width': 'last',
         'Volume_Spike': 'max',
         'Intraday_Range': 'last',
@@ -69,8 +69,8 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # 4. Create lagged features
     lag_mapping = {
-        'RSI_14': 'RSI_14_last',
-        'MA6': 'MA6_last',
+        'RSI_91': 'RSI_91_last',
+        'MA7': 'MA7_last',
         'Volume_Spike': 'Volume_Spike_max'
     }
     for base_feature, aggregated_col in lag_mapping.items():
@@ -78,7 +78,10 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
             daily_df[f'{base_feature}_lag{lag}'] = daily_df[aggregated_col].shift(lag)
     
     # 5. Define prediction target
-    daily_df['Target'] = (daily_df['Open_first'].shift(-1) - daily_df['Open_first']).div(daily_df['Open_first']).round(4)
+    daily_df['Target'] = (daily_df['Open_first'].shift(-2) - daily_df['Open_first'].shift(-1)) / daily_df['Open_first'].shift(-1)
+    
+    # 6. Drop the last row (today's incomplete data)
+    daily_df = daily_df.drop(daily_df.index[-1])
     
     return daily_df
 
@@ -97,8 +100,6 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     feature_cols = [col for col in main_data.columns if col != 'Target']
     X = main_data[feature_cols]
     y = main_data['Target']
-    logger.info(f"Total processed samples: {X.shape[0]}")
-    logger.info(f"Number of features: {X.shape[1]}")
     
     # 4. Data processing pipeline
     # 4.1 Missing value imputation (time-aware forward fill and then backward fill if necessary) 
@@ -108,7 +109,7 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     
     # 4.2 Winsorization (5%-95% quantile clipping)
     quantiles = X.quantile([0.05, 0.95])
-    X = X.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1)
+    X = X.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1).infer_objects(copy=False)
     
     # 4.3 Robust scaling (median/IQR normalization)
     scaler = RobustScaler()
@@ -124,7 +125,7 @@ def process_features(daily_df: pd.DataFrame, test_ratio: float = 0.2) -> tuple[p
     assert x_predict.isnull().sum().sum() == 0, "Predicting data contains missing values"
     
     # Apply training-based quantile clipping
-    x_predict = x_predict.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1)
+    x_predict = x_predict.clip(lower=quantiles.xs(0.05), upper=quantiles.xs(0.95), axis=1).infer_objects(copy=False)
     
     # Scale with pre-fit scaler
     x_predict = pd.DataFrame(scaler.transform(x_predict), columns=x_predict.columns.tolist(), index=x_predict.index)

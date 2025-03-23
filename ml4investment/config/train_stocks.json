@@ -1,0 +1,32 @@
+{
+    "train_stocks": [
+        "NVDA", "MSFT", "DDOG", "AMD", "AAPL", "GOOGL", "META", "AVGO", "CRM", "PANW", "TSM", 
+        "AMZN", "ADBE", "TSLA", "UBER", "INTC", "ASML", "AMAT", "TXN", "ORCL", "NOW", "SNOW", 
+        "PYPL", "DASH", "IONQ", "RGTI", "LRCX", "KLAC", "ASX", "TER", "SMCI", "ANET", "SNPS", 
+        "FTNT", "TEAM", "NET", "CDNS", "MRVL", "ZM", "DOCU", "OKTA", "CRWD", "ZS", "PATH", 
+        "DBX", "TWLO", "PLTR", "RBLX", "TTD", "SE", "SHOP", "BILL", "AFRM", 
+        "UPST", "SOFI", "LCID", "RIVN", "QS", "SPCE", "HOOD", "COIN",
+        
+        "JPM", "C", "V", "BLK", "GS", "SYF", "MS", "BAC", "MA", "PGR", "MKL", "AXP", "DFS", 
+        "SCHW", "ICE", "MCO", "PYPL", "FIS", "WFC", "USB", "TRV", "ALL", "AIG", "PRU", 
+        "MET", "RJF", "SF", "STT", "NDAQ", "CME", "MSCI", "SPGI", "MKTX", "TW", "RKT", "OWL",
+        
+        "LLY", "NVO", "JNJ", "ABBV", "MRNA", "ABT", "PFE", "REGN", "BSX", "UNH", "CRSP", 
+        "BEAM", "ISRG", "DXCM", "VRTX", "MDT", "SYK", "BDX", "ZTS", "TMO", "ILMN", "VEEV", 
+        "HCA", "DHR", "IQV", "CVS", "WST", "BAX", "BIIB", "ALC", "HOLX", "IDXX", "ICLR", 
+        "GMED", "NVCR", "EXAS", "NTRA", "TDOC", "HUM", "ELV", "CNC", "DGX", "LH",
+        
+        "WMT", "COST", "MCD", "SBUX", "NKE", "KO", "LULU", "LVMUY", "HESAY", "GOOS", "SPOT", 
+        "NFLX", "DIS", "WBD", "CHWY", "ETSY", "PTON", "TGT", "HD", "LOW", "TSN", "KDP", "PEP", 
+        "MNST", "KHC", "CL", "EL", "ULTA", "NCLH", "CCL", "MAR", "HLT", "YUM", "DPZ", "CMG", 
+        "DRI", "BJ", "TXRH", "RH", "FND", "ETSY", "BMBL", "ROST", "TJX", "BURL",
+        
+        "CAT", "LMT", "XOM", "CVX", "NEE", "RTX", "NOC", "BA", "FDX", "UPS", "DE", "PLUG", 
+        "BLDP", "ENPH", "SEDG", "GE", "HON", "WM", "RSG", "NSC", "UNP", "CSX", "LUV", "DAL", 
+        "AAL", "UAL", "SNAP", "PCAR", "EMR", "ETN", "MMM", "DOW", "LIN", "APD", "FCX", "CLF",
+        
+        "BABA", "PDD", "JD", "BIDU", "TCEHY", "BILI", "TCOM", "NTES", "HTHT", "TAL", "EDU", 
+        "YUMC", "BZUN", "WB", "MOMO", "FUTU", "IQ", "DADA", "XPEV", "LI", "NIO",
+        "ZH", "KC", "VIPS", "GOTU", "QD", "YMM"
+    ]
+}

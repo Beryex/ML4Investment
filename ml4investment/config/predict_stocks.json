@@ -1,0 +1,5 @@
+{
+    "predict_stocks": [
+        "NVDA", "MSFT", "AAPL", "GOOGL", "META", "AMZN", "TSLA", "INTC", "COIN", "BABA", "BIDU", "TCEHY"
+    ]
+}

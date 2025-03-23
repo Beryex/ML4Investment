@@ -1,0 +1,17 @@
+{
+    "drop_rate": 0.1045960563194514, 
+    "max_drop": 13, 
+    "skip_drop": 0.2497554869980871, 
+    "num_leaves": 58, 
+    "learning_rate": 0.010345804912727062, 
+    "feature_fraction": 0.6380580525605068, 
+    "lambda_l1": 1.4734069374843965e-05, 
+    "min_data_in_leaf": 36, 
+    "num_rounds": 772,
+    "objective": "regression_l1",
+    "metric": "mae",
+    "verbosity": -1,
+    "seed": 42,
+    "boosting_type": "dart",
+    "force_row_wise": true
+}

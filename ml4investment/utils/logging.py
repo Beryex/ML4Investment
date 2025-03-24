@@ -68,6 +68,10 @@ def configure_logging(env: str = "prod", file_name: str = None) -> None:
             "pandas": {
                 "level": "WARNING",
                 "propagate": True
+            },
+            "lightgbm": {
+                "level": "WARNING",
+                "propagate": True
             }
         }
     }

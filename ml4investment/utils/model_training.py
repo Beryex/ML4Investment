@@ -29,20 +29,36 @@ def model_training(x_train: pd.DataFrame,
     
     def objective(trial: optuna.Trial) -> float:
         params = {
+            'device': 'gpu',
+            'gpu_platform_id': 0,
+            'gpu_device_id': 0,
+            
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
-            'seed': seed,
             'boosting_type': 'dart',
-            'drop_rate': trial.suggest_float('drop_rate', 0.1, 0.2),
-            'max_drop': trial.suggest_int('max_drop', 5, 20),
-            'skip_drop': trial.suggest_float('skip_drop', 0.2, 0.6),
-            'num_leaves': trial.suggest_int('num_leaves', 32, 80),
-            'learning_rate': trial.suggest_float('learning_rate', 0.0075, 0.02, log=True),
-            'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
-            'lambda_l1': trial.suggest_float('lambda_l1', 1e-9, 1e-1, log=True),
-            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 25, 75),
-            'force_row_wise': True
+
+            'drop_rate': trial.suggest_float('drop_rate', 0.05, 0.15),
+            'max_drop': trial.suggest_int('max_drop', 10, 25),
+            'skip_drop': trial.suggest_float('skip_drop', 0.3, 0.7),
+
+            'num_leaves': trial.suggest_int('num_leaves', 40, 96),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
+            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 50, 150),
+
+            'lambda_l1': trial.suggest_float('lambda_l1', 1e-5, 1e-1, log=True),
+            'lambda_l2': trial.suggest_float('lambda_l2', 1e-5, 1e-1, log=True),
+            'feature_fraction': trial.suggest_float('feature_fraction', 0.7, 1.0),
+
+            'bagging_freq': trial.suggest_int('bagging_freq', 3, 7),
+            'bagging_fraction': trial.suggest_float('bagging_fraction', 0.7, 0.9),
+
+            'max_bin': trial.suggest_int('max_bin', 128, 255),
+            'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 0.1),
+            
+            'seed': seed,
+            'force_row_wise': True,
+            'deterministic': True
         }
         
         tscv = TimeSeriesSplit(n_splits=5)
@@ -59,7 +75,7 @@ def model_training(x_train: pd.DataFrame,
                 valid_sets=[lgb.Dataset(cur_x_val, 
                                         label=cur_y_val,
                                         categorical_feature=categorical_features)],
-                num_boost_round=trial.suggest_int('num_rounds', 500, 1500),
+                num_boost_round=trial.suggest_int('num_rounds', 800, 2000),
                 callbacks=[
                     lgb.log_evaluation(False),
                 ]
@@ -72,17 +88,23 @@ def model_training(x_train: pd.DataFrame,
     if model_hyperparams is None:
         logger.info("Begin hyperparameter optimization")
         study = optuna.create_study(direction='minimize')
-        study.optimize(objective, n_trials=1, timeout=9000)
+        study.optimize(objective, n_trials=10, timeout=7200)
         logger.info("Hyperparameter optimization completed")
 
         best_params = study.best_params.copy()
         best_params.update({
+            'device': 'gpu',
+            'gpu_platform_id': 0,
+            'gpu_device_id': 0,
+
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
-            'seed': seed,
             'boosting_type': 'dart',
-            'force_row_wise': True,  # Ensure reproducibility
+
+            'seed': seed,
+            'force_row_wise': True,
+            'deterministic': True
         })
         logger.info(f"Optimized model parameters: {best_params}")
 

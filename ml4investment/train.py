@@ -5,8 +5,9 @@ import json
 import os
 import pickle
 
+from ml4investment.config import settings
 from ml4investment.utils.seed import set_random_seed
-from ml4investment.utils.data_loader import fetch_trading_day_data
+from ml4investment.utils.data_loader import fetch_trading_day_data, merge_fetched_data
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_train
 from ml4investment.utils.model_training import model_training
@@ -15,17 +16,40 @@ configure_logging(env="prod", file_name="train.log")
 logger = logging.getLogger("ml4investment.train")
 
 
-def train(train_stock_list: list, save_process_feature_config_pth: str, model_hyperparams: dict, save_model_pth: str, save_model_hyperparams_pth: str, seed: int):
+def train(train_stock_list: list, 
+          fetched_data: dict, 
+          save_fetched_data_pth: str, 
+          save_process_feature_config_pth: str, 
+          model_hyperparams: dict, 
+          save_model_pth: str, 
+          save_model_hyperparams_pth: str, 
+          seed: int):
     """ Train model based on the given stocks """
     logger.info(f"Start training model given stocks: {train_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
-    set_random_seed(seed)
 
-    fetched_data = fetch_trading_day_data(train_stock_list, period = '2y')
+    if fetched_data is None:
+        fetched_data = fetch_trading_day_data(train_stock_list, period = settings.TRAIN_DAYS)
+
+        """ Fetch new data and merge with previous saved data """
+        if os.path.exists(save_fetched_data_pth):
+            logger.info(f"Loading previously saved data from {save_fetched_data_pth}")
+            with open(save_fetched_data_pth, 'rb') as f:
+                existing_data = pickle.load(f)
+        else:
+            logger.info("No previous data found. Starting fresh.")
+            existing_data = {}
+        
+        merged_data = merge_fetched_data(existing_data, fetched_data)
+        with open(save_fetched_data_pth, 'wb') as f:
+            pickle.dump(merged_data, f)
+        logger.info(f"Fetched data saved to {save_fetched_data_pth}")
+    else:
+        logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(fetched_data)
 
-    X_train, X_test, y_train, y_test, process_features_config_data = process_features_for_train(daily_features_data)
+    X_train, X_test, y_train, y_test, process_features_config_data = process_features_for_train(daily_features_data, test_number=settings.TEST_DAY_NUMBER)
     parent_dir = os.path.dirname(save_process_feature_config_pth)
     os.makedirs(parent_dir, exist_ok=True)
     with open(save_process_feature_config_pth, 'wb') as f:
@@ -40,7 +64,16 @@ def train(train_stock_list: list, save_process_feature_config_pth: str, model_hy
     logger.info(f"Number of features: {X_train.shape[1]}")
 
     # 2. Train the model based on all stock data
-    model, model_hyperparams = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], model_hyperparams=model_hyperparams, seed=seed)
+    if model_hyperparams is None:
+        model, model_hyperparams = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], model_hyperparams=model_hyperparams, seed=seed)
+        parent_dir = os.path.dirname(save_model_hyperparams_pth)
+        os.makedirs(parent_dir, exist_ok=True)
+        with open(save_model_hyperparams_pth, 'w') as f:
+            json.dump(model_hyperparams, f, indent=4)
+        logger.info(f"Model hyperparameter saved to {save_model_hyperparams_pth}")
+    else:
+        logger.info("Load input model hyperparameter")
+        model, _ = model_training(X_train, X_test, y_train, y_test, categorical_features=['stock_id'], model_hyperparams=model_hyperparams, seed=seed)
     
     # 3. Save trained model and hyperparameter
     parent_dir = os.path.dirname(save_model_pth)
@@ -49,12 +82,6 @@ def train(train_stock_list: list, save_process_feature_config_pth: str, model_hy
     model.save_model(save_model_pth)
     logger.info(f"Model saved to {save_model_pth}")
 
-    parent_dir = os.path.dirname(save_model_hyperparams_pth)
-    os.makedirs(parent_dir, exist_ok=True)
-    with open(save_model_hyperparams_pth, 'w') as f:
-        json.dump(model_hyperparams, f, indent=4)
-    logger.info(f"Model hyperparameter saved to {save_model_hyperparams_pth}")
-
     logger.info("Training process completed.")
 
 
@@ -62,21 +89,29 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
     parser.add_argument("--optimize_from_scratch", "-ofs", action='store_true', default=False)
-    parser.add_argument("--model_hyperparams", "-bp", type=str, default='data/prod_model_hyperparams.json')
+    parser.add_argument("--model_hyperparams_pth", "-mhpp", type=str, default='config/prod_model_hyperparams_optimal.json')
+    parser.add_argument("--fetch_data_from_scratch", "-fdfs", action='store_true', default=False)
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
+    parser.add_argument("--save_fetched_data_pth", "-sfdp", type=str, default='data/fetched_data.pkl')
     parser.add_argument("--save_model_pth", "-smp", type=str, default='data/prod_model.model')
-    parser.add_argument("--save_model_hyperparams_pth", "-sbpp", type=str, default='data/prod_model_hyperparams.json')
+    parser.add_argument("--save_model_hyperparams_pth", "-smhpp", type=str, default='config/prod_model_hyperparams.json')
     parser.add_argument("--save_process_feature_config_pth", "-spfcp", type=str, default='data/prod_process_feature_config.pkl')
 
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()
+    
+    seed = args.seed
+    set_random_seed(seed)
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    save_process_feature_config_pth = args.save_process_feature_config_pth
-    model_hyperparams = None if args.optimize_from_scratch else json.load(open(args.model_hyperparams, 'r'))
+    model_hyperparams = None if args.optimize_from_scratch else json.load(open(args.model_hyperparams_pth, 'r'))
+    fetched_data = None if args.fetch_data_from_scratch else pickle.load(open(args.fetched_data_pth, 'rb'))
+
+    save_fetched_data_pth = args.save_fetched_data_pth
     save_model_pth = args.save_model_pth
     save_model_hyperparams_pth = args.save_model_hyperparams_pth
-    seed = args.seed
+    save_process_feature_config_pth = args.save_process_feature_config_pth
 
-    train(train_stock_list, save_process_feature_config_pth, model_hyperparams, save_model_pth, save_model_hyperparams_pth, seed)
+    train(train_stock_list, fetched_data, save_fetched_data_pth, save_process_feature_config_pth, model_hyperparams, save_model_pth, save_model_hyperparams_pth, seed)

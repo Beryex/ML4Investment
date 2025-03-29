@@ -8,7 +8,7 @@
         "UPST", "SOFI", "LCID", "RIVN", "QS", "SPCE", "HOOD", "COIN",
         
         "JPM", "C", "V", "BLK", "GS", "SYF", "MS", "BAC", "MA", "PGR", "MKL", "AXP", "DFS", 
-        "SCHW", "ICE", "MCO", "PYPL", "FIS", "WFC", "USB", "TRV", "ALL", "AIG", "PRU", 
+        "SCHW", "ICE", "MCO", "FIS", "WFC", "USB", "TRV", "ALL", "AIG", "PRU", 
         "MET", "RJF", "SF", "STT", "NDAQ", "CME", "MSCI", "SPGI", "MKTX", "TW", "RKT", "OWL",
         
         "LLY", "NVO", "JNJ", "ABBV", "MRNA", "ABT", "PFE", "REGN", "BSX", "UNH", "CRSP", 
@@ -19,7 +19,7 @@
         "WMT", "COST", "MCD", "SBUX", "NKE", "KO", "LULU", "LVMUY", "HESAY", "GOOS", "SPOT", 
         "NFLX", "DIS", "WBD", "CHWY", "ETSY", "PTON", "TGT", "HD", "LOW", "TSN", "KDP", "PEP", 
         "MNST", "KHC", "CL", "EL", "ULTA", "NCLH", "CCL", "MAR", "HLT", "YUM", "DPZ", "CMG", 
-        "DRI", "BJ", "TXRH", "RH", "FND", "ETSY", "BMBL", "ROST", "TJX", "BURL",
+        "DRI", "BJ", "TXRH", "RH", "FND", "BMBL", "ROST", "TJX", "BURL",
         
         "CAT", "LMT", "XOM", "CVX", "NEE", "RTX", "NOC", "BA", "FDX", "UPS", "DE", "PLUG", 
         "BLDP", "ENPH", "SEDG", "GE", "HON", "WM", "RSG", "NSC", "UNP", "CSX", "LUV", "DAL", 

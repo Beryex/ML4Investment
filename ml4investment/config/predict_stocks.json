@@ -1,5 +1,3 @@
 {
-    "predict_stocks": [
-        "NVDA", "MSFT", "AAPL", "GOOGL", "META", "AMZN", "TSLA", "INTC", "COIN", "BABA", "BIDU", "TCEHY"
-    ]
+    "predict_stocks": ["TAL", "HOLX", "LCID", "TSLA", "DPZ", "ZS", "ZTS", "CHWY", "VIPS", "HTHT", "TSN", "RIVN", "NDAQ", "UPST", "ELV", "FDX", "NIO", "MNST", "HESAY", "MA", "ABT", "CL", "FUTU"]
 }

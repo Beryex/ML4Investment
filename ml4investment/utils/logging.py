@@ -72,6 +72,10 @@ def configure_logging(env: str = "prod", file_name: str = None) -> None:
             "lightgbm": {
                 "level": "WARNING",
                 "propagate": True
+            },
+            "arch": {
+                "level": "WARNING",
+                "propagate": True
             }
         }
     }
@@ -88,4 +92,5 @@ def configure_logging(env: str = "prod", file_name: str = None) -> None:
     config["root"]["handlers"] = ["console", file_handler_key]
 
     logging.config.dictConfig(config)
+    logging.captureWarnings(True)
     

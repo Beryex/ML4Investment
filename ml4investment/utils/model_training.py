@@ -5,6 +5,10 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
 import logging
+from prettytable import PrettyTable
+
+from ml4investment.config import settings
+from ml4investment.utils.feature_engineering import id_to_stock_code
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +18,9 @@ def model_training(x_train: pd.DataFrame,
                    y_train: pd.Series, 
                    y_test: pd.Series, 
                    categorical_features: list = None,
-                   best_params: dict = None) -> lgb.Booster:
+                   model_hyperparams: dict = None, 
+                   seed: int = 42) -> lgb.Booster:
     """ Time series modeling training pipeline """
-    # 1. Data preparation for LightGBM
-    if 'stock_id' in x_train.columns:
-        assert x_train['stock_id'].dtype.name == 'category'
-
     train_set = lgb.Dataset(x_train, 
                             label=y_train, 
                             categorical_feature=categorical_features, 
@@ -30,28 +31,41 @@ def model_training(x_train: pd.DataFrame,
                            reference=train_set, 
                            free_raw_data=False)
     
-    # 2. Hyperparameter optimization with temporal validation
     def objective(trial: optuna.Trial) -> float:
         params = {
+            'num_threads': settings.THREAD_NUM,
+            
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
-            'seed': 42,
             'boosting_type': 'dart',
-            'drop_rate': trial.suggest_float('drop_rate', 0.1, 0.2),
-            'max_drop': trial.suggest_int('max_drop', 5, 20),
-            'skip_drop': trial.suggest_float('skip_drop', 0.2, 0.6),
-            'num_leaves': trial.suggest_int('num_leaves', 32, 80),
-            'learning_rate': trial.suggest_float('learning_rate', 0.0075, 0.02, log=True),
-            'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
-            'lambda_l1': trial.suggest_float('lambda_l1', 1e-9, 1e-1, log=True),
-            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 25, 75),
-            'force_row_wise': True
+
+            'drop_rate': trial.suggest_float('drop_rate', 0.05, 0.2),
+            'max_drop': trial.suggest_int('max_drop', 10, 50),
+            'skip_drop': trial.suggest_float('skip_drop', 0.0, 0.6),
+
+            'num_leaves': trial.suggest_int('num_leaves', 48, 128),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.08, log=True),
+            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 100, 300),
+
+            'lambda_l1': trial.suggest_float('lambda_l1', 1e-5, 1e-1, log=True),
+            'lambda_l2': trial.suggest_float('lambda_l2', 1e-5, 1e-1, log=True),
+            'feature_fraction': trial.suggest_float('feature_fraction', 0.6, 1.0),
+
+            'bagging_freq': trial.suggest_int('bagging_freq', 1, 10),
+            'bagging_fraction': trial.suggest_float('bagging_fraction', 0.6, 0.95),
+
+            'max_bin': trial.suggest_int('max_bin', 128, 255),
+            'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 0.1),
+            
+            'seed': seed,
+            'force_row_wise': True,
+            'deterministic': True
         }
         
-        # Time-series cross-validation
         tscv = TimeSeriesSplit(n_splits=5)
-        scores = []
+        maes = []
+        sign_accs = []
         for fold, (train_idx, valid_idx) in enumerate(tscv.split(x_train)):
             cur_x_train, cur_x_val = x_train.iloc[train_idx], x_train.iloc[valid_idx]
             cur_y_train, cur_y_val = y_train.iloc[train_idx], y_train.iloc[valid_idx]
@@ -64,58 +78,99 @@ def model_training(x_train: pd.DataFrame,
                 valid_sets=[lgb.Dataset(cur_x_val, 
                                         label=cur_y_val,
                                         categorical_feature=categorical_features)],
-                num_boost_round=trial.suggest_int('num_rounds', 500, 1500),
+                num_boost_round=trial.suggest_int('num_rounds', 800, 2000),
                 callbacks=[
                     lgb.log_evaluation(False),
                 ]
             )
             preds = model.predict(cur_x_val)
-            scores.append(mean_absolute_error(cur_y_val, preds))
-            
-        return np.mean(scores)
+            maes.append(mean_absolute_error(cur_y_val, preds))
+            sign_accs.append((np.sign(preds) == np.sign(cur_y_val.to_numpy())).mean())
 
-    if best_params is None:
+        avg_mae = np.mean(maes)
+        avg_sign_acc = np.mean(sign_accs)
+            
+        return avg_mae, avg_sign_acc
+
+    if model_hyperparams is None:
         logger.info("Begin hyperparameter optimization")
-        study = optuna.create_study(direction='minimize')
-        study.optimize(objective, n_trials=300, timeout=9000)
+        study = optuna.create_study(
+            directions=["minimize", "maximize"],
+            sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
+            pruner=optuna.pruners.MedianPruner(n_warmup_steps=2)
+        )
+        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=25000)
         logger.info("Hyperparameter optimization completed")
 
-        best_params = study.best_params.copy()
+        pareto_trials = [t for t in study.best_trials if t.values[1] > settings.SIGN_ACCURACY_THRESHOLD]
+        best_trial = min(pareto_trials, key=lambda t: t.values[0])
+        best_params = best_trial.params.copy()
+        
         best_params.update({
-            'force_row_wise': True,  # Ensure reproducibility
-            'xgboost_dart_mode': True
+            'num_threads': settings.THREAD_NUM,
+
+            'objective': 'regression_l1',
+            'metric': 'mae',
+            'verbosity': -1,
+            'boosting_type': 'dart',
+
+            'seed': seed,
+            'force_row_wise': True,
+            'deterministic': True
         })
-        logger.info(f"Best parameters: {best_params}")
+        logger.info(f"Optimized model parameters: {best_params}")
 
     else:
-        logger.info("Load input hyperparameter")
-        best_params = best_params.copy()
-    
-    # 3. Final model training with best parameters    
+        best_params = model_hyperparams.copy()
+     
     logger.info("Begin model training with optimized parameters")
     final_model = lgb.train(
         best_params,
         train_set=train_set,
         valid_sets=[test_set],
-        num_boost_round=int(best_params['num_rounds'] * 1.5),
+        num_boost_round=int(best_params['num_rounds']),
         callbacks=[
             lgb.log_evaluation(False),
         ]
     )
     logger.info("Model training completed")
     
-    # 4. Model validation and feature analysis
     y_pred = final_model.predict(x_test)
     mae = mean_absolute_error(y_test, y_pred)
     sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
     logger.info(f"Model validation - MAE: {mae:.4f} | Sign Accuracy: {sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
     
-    # Feature importance analysis
+    features_table = PrettyTable()
+    features_table.field_names = ["Feature", "Importance"]
     importance = final_model.feature_importance(importance_type='gain')
     features = final_model.feature_name()
     sorted_imp = sorted(zip(importance, features), reverse=True)
     logger.info("Top features by gain:")
-    for imp, name in sorted_imp[:10]:
-        logger.info(f"{name}: {imp:.2f}")
+    for imp, name in sorted_imp:
+        features_table.add_row([name, f"{imp:.2f}"], divider=True)
+    logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
-    return final_model
+    sign_acc_table = PrettyTable()
+    sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
+    test_df = x_test.copy()
+    test_df['y_true'] = y_test.values
+    test_df['y_pred'] = y_pred
+    test_df['sign_correct'] = (np.sign(test_df['y_true']) == np.sign(test_df['y_pred'])).astype(int)
+
+    stock_sign_acc = (
+        test_df.groupby('stock_id', observed=True)['sign_correct']
+        .mean()
+        .sort_values(ascending=False)
+    )
+
+    predict_stocks = {"predict_stocks": []}
+    for stock_id, acc in stock_sign_acc.items():
+        stock = id_to_stock_code(stock_id)
+        sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
+        if acc > settings.SIGN_ACCURACY_THRESHOLD:
+            predict_stocks["predict_stocks"].append(stock)
+    logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
+
+    logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
+    
+    return final_model, best_params

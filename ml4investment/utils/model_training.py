@@ -17,8 +17,10 @@ def model_training(x_train: pd.DataFrame,
                    x_test: pd.DataFrame, 
                    y_train: pd.Series, 
                    y_test: pd.Series, 
+                   target_stock_list: list,
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
+                   use_mae: bool = False,
                    seed: int = 42) -> lgb.Booster:
     """ Time series modeling training pipeline """
     train_set = lgb.Dataset(x_train, 
@@ -150,12 +152,11 @@ def model_training(x_train: pd.DataFrame,
         features_table.add_row([name, f"{imp:.2f}"], divider=True)
     logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
-    sign_acc_table = PrettyTable()
-    sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
     test_df = x_test.copy()
     test_df['y_true'] = y_test.values
     test_df['y_pred'] = y_pred
     test_df['sign_correct'] = (np.sign(test_df['y_true']) == np.sign(test_df['y_pred'])).astype(int)
+    test_df['MAE'] = mean_absolute_error(test_df['y_true'], test_df['y_pred'])
 
     stock_sign_acc = (
         test_df.groupby('stock_id', observed=True)['sign_correct']
@@ -163,14 +164,40 @@ def model_training(x_train: pd.DataFrame,
         .sort_values(ascending=False)
     )
 
-    predict_stocks = {"predict_stocks": []}
+    stock_MAE = (
+        test_df.groupby('stock_id', observed=True)
+        .apply(lambda df: mean_absolute_error(df['y_true'], df['y_pred']))
+        .sort_values()
+    )
+
+    sign_acc_table = PrettyTable()
+    sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
     for stock_id, acc in stock_sign_acc.items():
         stock = id_to_stock_code(stock_id)
         sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
-        if acc > settings.SIGN_ACCURACY_THRESHOLD:
-            predict_stocks["predict_stocks"].append(stock)
     logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
 
+    mae_table = PrettyTable()
+    mae_table.field_names = ["Stock", "MAE"]
+    for stock_id, mae in stock_MAE.items():
+        stock = id_to_stock_code(stock_id)
+        mae_table.add_row([stock, mae], divider=True)
+    logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
+
+    logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
+    predict_stocks = {"predict_stocks": []}
+    if use_mae:
+        logger.info("Using MAE for stock selection")
+        for stock_id, mae in stock_MAE.items():
+            stock = id_to_stock_code(stock_id)
+            if mae < settings.MAE_THRESHOLD and stock in target_stock_list:
+                predict_stocks["predict_stocks"].append(stock)
+    else:
+        logger.info("Using sign accuracy for stock selection")
+        for stock_id, acc in stock_sign_acc.items():
+            stock = id_to_stock_code(stock_id)
+            if acc > settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
+                predict_stocks["predict_stocks"].append(stock)
     logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
     
-    return final_model, best_params
+    return final_model, best_params, predict_stocks

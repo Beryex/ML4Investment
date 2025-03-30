@@ -4,10 +4,12 @@ import logging
 import pandas_market_calendars as mcal
 from tqdm import tqdm
 
+from ml4investment.config import settings
+
 logger = logging.getLogger(__name__)
 
 
-def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = '1h', check_valid: bool = False) -> pd.DataFrame:
+def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = False) -> pd.DataFrame:
     """ Fetch trading day data for a given stock for the last given days with given interval """
     logger.info(f"Fetching data for {stocks}")
     fetched_data = {}
@@ -62,3 +64,29 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> dict:
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
     return merged
+
+
+def get_target_stocks(train_stock_list: list) -> list:
+    """ Get target stocks across different sectors with minimum market cap """
+    info_list = []
+    with tqdm(train_stock_list, desc="Fetch stocks data") as pbar:
+        for stock in pbar:
+            pbar.set_postfix({'stock': stock,}, refresh=True)
+
+            stock_info = yf.Ticker(stock).info
+            sector = stock_info.get("sector", "Others")
+            market_cap = stock_info.get("marketCap", 0)
+            info_list.append({"symbol": stock, "sector": sector, "market_cap": market_cap})
+            
+    df = pd.DataFrame(info_list)
+    logger.info(f"Get target stocks with minimum market cap: {settings.MIN_CAP}")
+    df = df[df["market_cap"] >= settings.MIN_CAP].copy()
+    df["sector"] = df["sector"].fillna("Others")
+
+    target_stock_list = []
+    for sector, target_count in settings.TARGET_STOCK_DISTRIBUTION.items():
+        logger.info(f"Get target stocks in sector: {sector} with count: {target_count}")
+        sector_df = df[df["sector"] == sector].sort_values("market_cap", ascending=False)
+        target_stock_list += sector_df.head(target_count)["symbol"].tolist()
+    
+    return target_stock_list

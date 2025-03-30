@@ -385,7 +385,7 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
     return X_predict_dict
 
 
-def process_features_for_backtest(daily_dict: dict, config_data: dict) -> tuple[dict, dict, int]:
+def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_stock_list: list) -> tuple[dict, dict, int]:
     """ Process Data, including washing, removing Nan, scaling and spliting for backtest purpose """
     X_backtest_dict = {}
     y_backtest_dict = {}
@@ -403,7 +403,8 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict) -> tuple[
         X_backtest_dict[i] = {}
         y_backtest_dict[i] = {}
 
-    for stock, df in daily_dict.items():
+    for stock in predict_stock_list:
+        df = daily_dict[stock]
         cur_config_data = config_data[stock]
         lower_bound = cur_config_data['lower_bound']
         upper_bound = cur_config_data['upper_bound']

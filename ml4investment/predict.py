@@ -73,8 +73,8 @@ if __name__ == "__main__":
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
     parser.add_argument("--predict_stocks", "-ps", type=str, default='config/predict_stocks.json')
 
-    parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config_optimal.pkl')
-    parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model_optimal.model')
+    parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config.pkl')
+    parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
 
     parser.add_argument("--seed", "-s", type=int, default=42)
 

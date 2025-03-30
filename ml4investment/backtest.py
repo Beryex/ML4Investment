@@ -33,7 +33,7 @@ def predict(train_stock_list:list, predict_stock_list: list, process_feature_con
     with open(process_feature_config_pth, 'rb') as f:
         process_feature_config = pickle.load(f)
     logger.info(f"Load processing features configuration from {process_feature_config_pth}")
-    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config)
+    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config, predict_stock_list)
 
     backtest_oldest_dates = {X_backtest.index.min() for X_backtest in X_backtest_dict[0].values()}
     if len(backtest_oldest_dates) != 1:
@@ -62,22 +62,37 @@ def predict(train_stock_list:list, predict_stock_list: list, process_feature_con
     results_table = PrettyTable()
     results_table.field_names = [
         "Day", 
-        "Predict First Optimal Stock", 
-        "Predict First Optimal Price Change", 
-        "Actual First Optimal Price Change", 
-        "Predict Second Optimal Stock", 
-        "Predict Second Optimal Price Change", 
-        "Actual Second Optimal Price Change"
+        "Predict First Optimal Stock (PFOS)", 
+        "PFOS Predict Price Change", 
+        "PFOS Actual Price Change", 
+        "Predict Second Optimal Stock (PSOS)", 
+        "PSOS Predict Price Change", 
+        "PSOS Actual Price Change",
+        "Actual First Optimal Stock (AFOS)", 
+        "AFOS  Predict Price Change", 
+        "AFOS Actual Price Change", 
+        "Actual Second Optimal Stock (ASOS)", 
+        "ASOS Predict Price Change", 
+        "ASOS Actual Price Change",
     ]
     gain_predict = 1
     gain_actual = 1
+    gain_optimal = 1
     for i in range(backtest_day_number):
         sorted_stock_gain_backtest_prediction = sorted(backtest_results[i].items(), key=lambda x: x[1], reverse=True)
+        sorted_stock_gain_backtest_actual = sorted(y_backtest_dict[i].items(), key=lambda x: x[1], reverse=True)
         cur_first_optimal_stock = sorted_stock_gain_backtest_prediction[0][0]
         cur_second_optimal_stock = sorted_stock_gain_backtest_prediction[1][0]
-        if backtest_results[i][cur_first_optimal_stock] > 0 and backtest_results[i][cur_second_optimal_stock] > 0:
+        actual_first_optimal_stock = sorted_stock_gain_backtest_actual[0][0]
+        actual_second_optimal_stock = sorted_stock_gain_backtest_actual[1][0]
+        if backtest_results[i][cur_second_optimal_stock] > 0:
             gain_predict = 0.5 * gain_predict * (1 + backtest_results[i][cur_first_optimal_stock]) + 0.5 * gain_predict * (1 + backtest_results[i][cur_second_optimal_stock])
             gain_actual = 0.5 * gain_actual * (1 + y_backtest_dict[i][cur_first_optimal_stock]) + 0.5 * gain_actual * (1 + y_backtest_dict[i][cur_second_optimal_stock])
+            gain_optimal = 0.5 * gain_optimal * (1 + y_backtest_dict[i][actual_first_optimal_stock]) + 0.5 * gain_optimal * (1 + y_backtest_dict[i][actual_second_optimal_stock])
+        elif backtest_results[i][cur_first_optimal_stock] > 0:
+            gain_predict *= (1 + backtest_results[i][cur_first_optimal_stock])
+            gain_actual *= (1 + y_backtest_dict[i][cur_first_optimal_stock])
+            gain_optimal *= (1 + y_backtest_dict[i][actual_first_optimal_stock])
         cur_day = str(X_backtest_dict[i][cur_first_optimal_stock].index[0])
         row = [
             cur_day, 
@@ -86,12 +101,18 @@ def predict(train_stock_list:list, predict_stock_list: list, process_feature_con
             f"{y_backtest_dict[i][cur_first_optimal_stock]:+.2%}", 
             cur_second_optimal_stock, 
             f"{backtest_results[i][cur_second_optimal_stock]:+.2%}", 
-            f"{y_backtest_dict[i][cur_second_optimal_stock]:+.2%}"
+            f"{y_backtest_dict[i][cur_second_optimal_stock]:+.2%}",
+            actual_first_optimal_stock, 
+            f"{backtest_results[i][actual_first_optimal_stock]:+.2%}", 
+            f"{y_backtest_dict[i][actual_first_optimal_stock]:+.2%}", 
+            actual_second_optimal_stock, 
+            f"{backtest_results[i][actual_second_optimal_stock]:+.2%}", 
+            f"{y_backtest_dict[i][actual_second_optimal_stock]:+.2%}"
         ]
         results_table.add_row(row, divider=True)
     logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
 
-    logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}")
+    logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}, Optimal overall gain: {gain_optimal:+.2%}, Efficiency: {(gain_actual/gain_optimal):.2%}")
 
     logger.info("Backtesting process completed.")
 

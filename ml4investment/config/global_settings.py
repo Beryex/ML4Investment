@@ -3,12 +3,16 @@ TRAIN_DAYS = '2y'
 MIN_CAP = 1e9
 TARGET_STOCK_DISTRIBUTION = {
     "Technology": 20,
-    "Healthcare": 5,
-    "Financial Services": 5,
-    "Consumer Defensive": 5,
-    "Consumer Cyclical": 5,
-    "Industrials": 5,
-    "Communication Services": 5
+    "Healthcare": 3,
+    "Financial Services": 3,
+    "Consumer Defensive": 3,
+    "Consumer Cyclical": 3,
+    "Industrials": 3,
+    "Energy": 3,
+    "Communication Services": 3,
+    "Utilities": 3,
+    "Real Estate": 3,
+    "Basic Materials": 3
 }
 
 # Feature Engineering

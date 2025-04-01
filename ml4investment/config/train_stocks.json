@@ -1,32 +1,5 @@
 {
-    "train_stocks": [
-        "NVDA", "MSFT", "DDOG", "AMD", "AAPL", "GOOGL", "META", "AVGO", "CRM", "PANW", "TSM", 
-        "AMZN", "ADBE", "TSLA", "UBER", "INTC", "ASML", "AMAT", "TXN", "ORCL", "NOW", "SNOW", 
-        "PYPL", "DASH", "IONQ", "RGTI", "LRCX", "KLAC", "ASX", "TER", "SMCI", "ANET", "SNPS", 
-        "FTNT", "TEAM", "NET", "CDNS", "MRVL", "ZM", "DOCU", "OKTA", "CRWD", "ZS", "PATH", 
-        "DBX", "TWLO", "PLTR", "RBLX", "TTD", "SE", "SHOP", "BILL", "AFRM", 
-        "UPST", "SOFI", "LCID", "RIVN", "QS", "SPCE", "HOOD", "COIN",
-        
-        "JPM", "C", "V", "BLK", "GS", "SYF", "MS", "BAC", "MA", "PGR", "MKL", "AXP", "DFS", 
-        "SCHW", "ICE", "MCO", "FIS", "WFC", "USB", "TRV", "ALL", "AIG", "PRU", 
-        "MET", "RJF", "SF", "STT", "NDAQ", "CME", "MSCI", "SPGI", "MKTX", "TW", "RKT", "OWL",
-        
-        "LLY", "NVO", "JNJ", "ABBV", "MRNA", "ABT", "PFE", "REGN", "BSX", "UNH", "CRSP", 
-        "BEAM", "ISRG", "DXCM", "VRTX", "MDT", "SYK", "BDX", "ZTS", "TMO", "ILMN", "VEEV", 
-        "HCA", "DHR", "IQV", "CVS", "WST", "BAX", "BIIB", "ALC", "HOLX", "IDXX", "ICLR", 
-        "GMED", "NVCR", "EXAS", "NTRA", "TDOC", "HUM", "ELV", "CNC", "DGX", "LH",
-        
-        "WMT", "COST", "MCD", "SBUX", "NKE", "KO", "LULU", "LVMUY", "HESAY", "GOOS", "SPOT", 
-        "NFLX", "DIS", "WBD", "CHWY", "ETSY", "PTON", "TGT", "HD", "LOW", "TSN", "KDP", "PEP", 
-        "MNST", "KHC", "CL", "EL", "ULTA", "NCLH", "CCL", "MAR", "HLT", "YUM", "DPZ", "CMG", 
-        "DRI", "BJ", "TXRH", "RH", "FND", "BMBL", "ROST", "TJX", "BURL",
-        
-        "CAT", "LMT", "XOM", "CVX", "NEE", "RTX", "NOC", "BA", "FDX", "UPS", "DE", "PLUG", 
-        "BLDP", "ENPH", "SEDG", "GE", "HON", "WM", "RSG", "NSC", "UNP", "CSX", "LUV", "DAL", 
-        "AAL", "UAL", "SNAP", "PCAR", "EMR", "ETN", "MMM", "DOW", "LIN", "APD", "FCX", "CLF",
-        
-        "BABA", "PDD", "JD", "BIDU", "TCEHY", "BILI", "TCOM", "NTES", "HTHT", "TAL", "EDU", 
-        "YUMC", "BZUN", "WB", "MOMO", "FUTU", "IQ", "DADA", "XPEV", "LI", "NIO",
-        "ZH", "KC", "VIPS", "GOTU", "QD", "YMM"
-    ]
+    "train_stocks": ["AAPL", "MSFT", "NVDA", "TSM", "AVGO", "ORCL", "ASML", "CRM", "PLTR", "AMD", "NOW", "ADBE", "TXN", "UBER", "SHOP", "AMAT", "PANW", "INTC", "ANET", "LRCX", "KLAC", "CRWD", "FTNT", "CDNS", "SNPS", "TEAM", "MRVL", "SNOW", "NET", "FIS", "DDOG", "ZS", "TTD", "ZM", "SMCI", "ASX", "OKTA", "DOCU", "TWLO", 
+    "AFRM", "YMM", "TER", "ENPH", "DBX", "PATH", "IONQ", "BILL", "KC", "RGTI", "LLY", "UNH", "JNJ", "ABBV", "NVO", "ABT", "TMO", "ISRG", "DHR", "BSX", "PFE", "SYK", "VRTX", "MDT", "ELV", "CVS", "HCA", "ZTS", "REGN", "BDX", "ALC", "VEEV", "IDXX", "HUM", "IQV", "CNC", "DXCM", "BIIB", "NTRA", "LH", "DGX", 
+    "BAX", "WST", "ICLR", "HOLX", "ILMN", "MRNA", "GMED", "EXAS", "CRSP", "BEAM", "NVCR", "TDOC", "JPM", "V", "MA", "BAC", "WFC", "AXP", "MS", "GS", "PGR", "SPGI", "BLK", "SCHW", "C", "ICE", "CME", "MCO", "USB", "PYPL", "TRV", "ALL", "MET", "AIG", "COIN", "MSCI", "NDAQ", "DFS", "PRU", "HOOD", "TW", "OWL", "RJF", "RKT", "STT", "MKL", "SYF", "FUTU", "SOFI", "SF", "MKTX", "UPST", "WMT", "COST", "KO", "PEP", "CL", "MNST", "TGT", "KDP", "KHC", "EL", "TSN", "BJ", "TAL", "EDU", "AMZN", "TSLA", "HD", "BABA", "LVMUY", "HESAY", "MCD", "PDD", "TJX", "LOW", "SBUX", "NKE", "SE", "CMG", "MAR", "JD", "HLT", "YUM", "TCOM", "ROST", "LULU", "LI", "CCL", "DRI", "YUMC", "XPEV", "ULTA", "DPZ", "BURL", "RIVN", "CHWY", "HTHT", "TXRH", "FND", "NCLH", "VIPS", "NIO", "LCID", "ETSY", "RH", "PTON", "QS", "GE", "RTX", "CAT", "UNP", "HON", "BA", "DE", "ETN", "LMT", "UPS", "WM", "MMM", "RSG", "NOC", "EMR", "FDX", "CSX", "NSC", "PCAR", "DAL", "UAL", "LUV", "AAL", "PLUG", "XOM", "CVX", "GOOGL", "META", "TCEHY", "NFLX", "DIS", "SPOT", "DASH", "NTES", "RBLX", "BIDU", "WBD", "SNAP", "BILI", "WB", "IQ", "MOMO", "NEE", "LIN", "APD", "FCX", "DOW", "CLF"]    
 }

@@ -48,14 +48,17 @@ def train(train_stock_list: list,
             logger.info("No previous data found. Starting fresh.")
             existing_data = {}
         
-        merged_data = merge_fetched_data(existing_data, fetched_data)
+        merged_data, train_data = merge_fetched_data(existing_data, fetched_data)
         with open(args.save_fetched_data_pth, 'wb') as f:
             pickle.dump(merged_data, f)
         logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")
     else:
+        train_data = {}
+        for stock in train_stock_list:
+            train_data[stock] = fetched_data[stock]
         logger.info(f"Load input fetched data")
 
-    daily_features_data = calculate_features(fetched_data)
+    daily_features_data = calculate_features(train_data)
 
     X_train, X_test, y_train, y_test, process_features_config_data = process_features_for_train(daily_features_data, test_number=settings.TEST_DAY_NUMBER)
     parent_dir = os.path.dirname(args.save_process_feature_config_pth)

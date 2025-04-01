@@ -46,24 +46,29 @@ def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = set
     return fetched_data
 
 
-def merge_fetched_data(existing_data: dict, new_data: dict) -> dict:
+def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]:
     """Merge newly fetched data with previously saved data."""
     merged = existing_data.copy()
+    train_data = {}
     logger.info(f"Starting merge: {len(new_data)} stocks to merge into existing {len(existing_data)}")
 
     for stock in new_data:
         if stock in existing_data:
             # Concatenate and remove duplicates by index (timestamp)
+            original_len = len(existing_data[stock])
             merged_df = pd.concat([existing_data[stock], new_data[stock]])
             merged_df = merged_df[~merged_df.index.duplicated(keep='last')].sort_index()
+            merged_len = len(merged_df)
+            logger.info(f"Merging existing stock: {stock} with {merged_len - original_len}")
         else:
             merged_df = new_data[stock]
             logger.info(f"Adding new stock: {stock} with {len(new_data[stock])} rows")
 
         merged[stock] = merged_df
+        train_data[stock] = merged_df
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
-    return merged
+    return merged, train_data
 
 
 def get_target_stocks(train_stock_list: list) -> list:

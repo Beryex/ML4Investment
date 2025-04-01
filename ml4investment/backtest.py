@@ -27,9 +27,6 @@ def predict(train_stock_list:list, predict_stock_list: list, process_feature_con
 
     daily_features_data = calculate_features(fetched_data)
 
-    for stock in daily_features_data.keys():
-        daily_features_data[stock] = daily_features_data[stock].tail(settings.TEST_DAY_NUMBER)
-
     with open(process_feature_config_pth, 'rb') as f:
         process_feature_config = pickle.load(f)
     logger.info(f"Load processing features configuration from {process_feature_config_pth}")

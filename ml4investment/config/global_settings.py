@@ -14,6 +14,19 @@ TARGET_STOCK_DISTRIBUTION = {
     "Real Estate": 3,
     "Basic Materials": 3
 }
+SECTOR_ID_MAP = {
+    "Technology": 1,
+    "Healthcare": 2,
+    "Financial Services": 3,
+    "Consumer Defensive": 4,
+    "Consumer Cyclical": 5,
+    "Industrials": 6,
+    "Energy": 7,
+    "Communication Services": 8,
+    "Utilities": 9,
+    "Real Estate": 10,
+    "Basic Materials": 11
+}
 
 # Feature Engineering
 DATA_INTERVAL = '1h'
@@ -26,6 +39,5 @@ MAE_THRESHOLD = 0.015
 SIGN_ACCURACY_THRESHOLD = 0.50
 
 # Evaluation
-TEST_FETCH_DAYS = '3mo'
 TEST_DAY_NUMBER = 21
 NUMBER_OF_STOCKS_TO_BUY = 3

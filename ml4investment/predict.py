@@ -7,7 +7,7 @@ import pickle
 import lightgbm as lgb
 
 from ml4investment.config import settings
-from ml4investment.utils.seed import set_random_seed
+from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.data_loader import fetch_trading_day_data
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_predict
@@ -60,11 +60,21 @@ def predict(train_stock_list: list, predict_stock_list: list, process_feature_co
     logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
 
     sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
-    first_optimal_stock = sorted_stock_gain_prediction[0][0]
-    second_optimal_stock = sorted_stock_gain_prediction[1][0]
-    logger.info(f"Suggested optimal stock: {first_optimal_stock} with predicted price change: {predictions[first_optimal_stock]:+.2%}")
-    logger.info(f"Suggested optimal stock: {second_optimal_stock} with predicted price change: {predictions[second_optimal_stock]:+.2%}")
-    
+    top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
+    actual_number_selected = len(top_stocks)
+
+    if actual_number_selected == 0:
+        logger.info("No stocks were recommended today (no positive predicted returns).")
+        return
+    else:
+        predicted_returns = [value for _, value in top_stocks]
+        total_pred = sum(predicted_returns)
+        weights = [ret / total_pred for ret in predicted_returns]
+
+        logger.info(f"Suggested top {actual_number_selected} stocks to buy:")
+        for (stock, pred), weight in zip(top_stocks, weights):
+            logger.info(f"  - {stock:>6} | predicted change: {pred:+.2%} | recommended weight: {weight:.2%}")
+
     logger.info("Prediction process completed.")
 
 

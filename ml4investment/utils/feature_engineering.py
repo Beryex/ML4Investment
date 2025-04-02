@@ -255,6 +255,9 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63) -> tuple
     X_train_list, X_test_list = [], []
     y_train_list, y_test_list = [], []
 
+    for stock, df in daily_dict.items():
+        daily_dict[stock] = df.dropna(subset=['Target'])
+
     stock_id_map = {stock: stock_code_to_id(stock) for stock in daily_dict.keys()}
     if len(stock_id_map.values()) != len(set(stock_id_map.values())):
         logger.error(f"Stock mapping mismatch. Stock id number: {len(stock_id_map.values())}, Stock number: {len(set(stock_id_map.values()))}")
@@ -393,6 +396,10 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
     
     for stock, df in daily_dict.items():
         daily_dict[stock] = df.dropna(subset=['Target'])
+    
+    for stock in daily_dict.keys():
+        daily_dict[stock] = daily_dict[stock].tail(settings.TEST_DAY_NUMBER)
+
     backtest_day_numbers = {df.shape[0] for df in daily_dict.values()}
     if len(backtest_day_numbers) != 1:
         logger.error("Backtest day number mismatched")

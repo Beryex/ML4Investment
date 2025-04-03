@@ -17,15 +17,18 @@ configure_logging(env="prod", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
 
 
-def predict(train_stock_list:list, predict_stock_list: list, process_feature_config_pth: str, model_pth: str, seed: int):
+def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict, process_feature_config_pth: str, model_pth: str, seed: int):
     """ Backtest the model performance for the given stocks for the last week """
     logger.info(f"Start backtesting based on the given stocks: {predict_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
     set_random_seed(seed)
 
-    fetched_data = fetch_trading_day_data(train_stock_list, period = settings.TEST_FETCH_DAYS)
+    backtest_data = {}
+    for stock in train_stock_list:
+        backtest_data[stock] = fetched_data[stock]
+    logger.info(f"Load input fetched data")
 
-    daily_features_data = calculate_features(fetched_data)
+    daily_features_data = calculate_features(backtest_data)
 
     with open(process_feature_config_pth, 'rb') as f:
         process_feature_config = pickle.load(f)
@@ -101,6 +104,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
     parser.add_argument("--predict_stocks", "-ps", type=str, default='config/predict_stocks.json')
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
     parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config.pkl')
     parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
@@ -111,8 +115,9 @@ if __name__ == "__main__":
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
     predict_stock_list = json.load(open(args.predict_stocks, 'r'))["predict_stocks"]
+    fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
     process_feature_config_pth = args.process_feature_config_pth
     model_pth = args.model_pth
     seed = args.seed
 
-    predict(train_stock_list, predict_stock_list, process_feature_config_pth, model_pth, seed)
+    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config_pth, model_pth, seed)

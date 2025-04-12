@@ -4,8 +4,8 @@ from pandas.tseries.offsets import CustomBusinessDay
 from sklearn.preprocessing import RobustScaler
 import pandas_market_calendars as mcal
 import logging
-import yfinance as yf
 from tqdm import tqdm
+from sklearn.utils import shuffle
 
 from ml4investment.config import settings
 
@@ -251,7 +251,7 @@ def _calculate_obv(df: pd.DataFrame) -> pd.Series:
     return (np.sign(price_change) * df['Volume']).cumsum()
 
 
-def process_features_for_train(daily_dict: dict, test_number: int = 63) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """ Process Data, including washing, removing Nan, scaling and spliting for training purpose """
     process_features_config_data = {}
     X_train_list, X_test_list = [], []
@@ -274,12 +274,7 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63) -> tuple
     process_features_config_data['cat_type'] = cat_type
     process_features_config_data['stock_id_map'] = stock_id_map
 
-    stock_sector_id_map = {}
-    with tqdm(daily_dict.keys(), desc="Calculate stocks sector") as pbar:
-        for stock in pbar:
-            pbar.set_postfix({'stock': stock}, refresh=True)
-            stock_sector_id_map[stock] = settings.SECTOR_ID_MAP[yf.Ticker(stock).info.get("sector", "Others")]
-    logger.info(stock_sector_id_map)
+    stock_sector_id_map = settings.STOCK_SECTOR_ID_MAP
     
     all_sector_ids = sorted(set(stock_sector_id_map.values()))
     cat_sector_type = pd.CategoricalDtype(categories=all_sector_ids)
@@ -365,6 +360,8 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63) -> tuple
     X_test = pd.concat(X_test_list)
     y_train = pd.concat(y_train_list)
     y_test = pd.concat(y_test_list)
+
+    X_train, y_train = shuffle(X_train, y_train, random_state=seed)
 
     if X_train.index.max() >= X_test.index.min():
         logger.error("Temporal leakage detected in combined dataset")

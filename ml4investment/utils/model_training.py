@@ -21,7 +21,8 @@ def model_training(x_train: pd.DataFrame,
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
                    use_mae: bool = False,
-                   seed: int = 42) -> lgb.Booster:
+                   seed: int = 42,
+                   verbose: bool = False) -> lgb.Booster:
     """ Time series modeling training pipeline """
     train_set = lgb.Dataset(x_train, 
                             label=y_train, 
@@ -142,15 +143,16 @@ def model_training(x_train: pd.DataFrame,
     sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
     logger.info(f"Model validation - MAE: {mae:.4f} | Sign Accuracy: {sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
     
-    features_table = PrettyTable()
-    features_table.field_names = ["Feature", "Importance"]
-    importance = final_model.feature_importance(importance_type='gain')
-    features = final_model.feature_name()
-    sorted_imp = sorted(zip(importance, features), reverse=True)
-    logger.info("Top features by gain:")
-    for imp, name in sorted_imp:
-        features_table.add_row([name, f"{imp:.2f}"], divider=True)
-    logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
+    if verbose:
+        features_table = PrettyTable()
+        features_table.field_names = ["Feature", "Importance"]
+        importance = final_model.feature_importance(importance_type='gain')
+        features = final_model.feature_name()
+        sorted_imp = sorted(zip(importance, features), reverse=True)
+        logger.info("Top features by gain:")
+        for imp, name in sorted_imp:
+            features_table.add_row([name, f"{imp:.2f}"], divider=True)
+        logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
     test_df = x_test.copy()
     test_df['y_true'] = y_test.values
@@ -170,19 +172,20 @@ def model_training(x_train: pd.DataFrame,
         .sort_values()
     )
 
-    sign_acc_table = PrettyTable()
-    sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
-    for stock_id, acc in stock_sign_acc.items():
-        stock = id_to_stock_code(stock_id)
-        sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
-    logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
+    if verbose:
+        sign_acc_table = PrettyTable()
+        sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
+        for stock_id, acc in stock_sign_acc.items():
+            stock = id_to_stock_code(stock_id)
+            sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
+        logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
 
-    mae_table = PrettyTable()
-    mae_table.field_names = ["Stock", "MAE"]
-    for stock_id, mae in stock_MAE.items():
-        stock = id_to_stock_code(stock_id)
-        mae_table.add_row([stock, mae], divider=True)
-    logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
+        mae_table = PrettyTable()
+        mae_table.field_names = ["Stock", "MAE"]
+        for stock_id, mae in stock_MAE.items():
+            stock = id_to_stock_code(stock_id)
+            mae_table.add_row([stock, mae], divider=True)
+        logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
 
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}

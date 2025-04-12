@@ -60,7 +60,7 @@ def train(train_stock_list: list,
 
     daily_features_data = calculate_features(train_data)
 
-    X_train, X_test, y_train, y_test, process_features_config_data = process_features_for_train(daily_features_data, test_number=settings.TEST_DAY_NUMBER)
+    X_train, X_test, y_train, y_test, process_features_config_data = process_features_for_train(daily_features_data, test_number=settings.TEST_DAY_NUMBER, seed=seed)
     parent_dir = os.path.dirname(args.save_process_feature_config_pth)
     os.makedirs(parent_dir, exist_ok=True)
     with open(args.save_process_feature_config_pth, 'wb') as f:
@@ -85,7 +85,8 @@ def train(train_stock_list: list,
         target_stock_list,
         categorical_features=['stock_id'],
         model_hyperparams=model_hyperparams,
-        seed=seed
+        seed=seed,
+        verbose=args.verbose
     )
 
     if optimize:
@@ -121,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_pth", "-smp", type=str, default='data/prod_model.model')
     parser.add_argument("--save_model_hyperparams_pth", "-smhpp", type=str, default='config/prod_model_hyperparams.json')
 
+    parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()

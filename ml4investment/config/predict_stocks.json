@@ -1,1 +1,20 @@
-{"predict_stocks": ["NOW", "INTC", "TSLA", "XOM", "LLY", "JNJ", "TXN", "NEE", "MA", "PLTR", "CVX"]}
+{
+    "predict_stocks": [
+        "MA",
+        "NOW",
+        "INTC",
+        "TSLA",
+        "XOM",
+        "CVX",
+        "PLTR",
+        "UBER",
+        "GOOGL",
+        "TCEHY",
+        "TSM",
+        "UNH",
+        "WMT",
+        "COST",
+        "KO",
+        "JNJ"
+    ]
+}

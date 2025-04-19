@@ -17,7 +17,7 @@ configure_logging(env="prod", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
 
 
-def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict, process_feature_config_pth: str, model_pth: str, seed: int):
+def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
     """ Backtest the model performance for the given stocks for the last week """
     logger.info(f"Start backtesting based on the given stocks: {predict_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
@@ -30,10 +30,11 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
 
     daily_features_data = calculate_features(backtest_data)
 
-    with open(process_feature_config_pth, 'rb') as f:
-        process_feature_config = pickle.load(f)
-    logger.info(f"Load processing features configuration from {process_feature_config_pth}")
     X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config, predict_stock_list)
+
+    for i in range(backtest_day_number):
+        for stock, data in X_backtest_dict[i].items():
+            X_backtest_dict[i][stock] = data[selected_features]
 
     backtest_oldest_dates = {X_backtest.index.min() for X_backtest in X_backtest_dict[0].values()}
     if len(backtest_oldest_dates) != 1:
@@ -50,8 +51,12 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
     logger.info(f"Oldest date in backtest data: {backtest_oldest_date}")
     logger.info(f"Newest date in backtest data: {backtest_newest_date}")
 
-    model = lgb.Booster(model_file=model_pth)
-    logger.info(f"Load LGB model from {model_pth}")
+    feature_nums = {len(list(X_predict.columns)) for X_predict in X_backtest_dict[0].values()}
+    if len(feature_nums) != 1:
+        logger.error(f"Feature number mismatched: {feature_nums}")
+        raise ValueError(f"Feature number mismatched: {feature_nums}")
+    feature_num = feature_nums.pop()
+    logger.info(f"Number of features: {feature_num}")
     
     y_predict_dict = {}
     for i in range(backtest_day_number):
@@ -107,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
     parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config.pkl')
+    parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
 
     parser.add_argument("--seed", "-s", type=int, default=42)
@@ -116,8 +122,9 @@ if __name__ == "__main__":
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
     predict_stock_list = json.load(open(args.predict_stocks, 'r'))["predict_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
-    process_feature_config_pth = args.process_feature_config_pth
-    model_pth = args.model_pth
+    process_feature_config = pickle.load(open(args.process_feature_config_pth, 'rb'))
+    selected_features =json.load(open(args.features_pth, 'r'))["features"]
+    model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
-    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config_pth, model_pth, seed)
+    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config, selected_features, model, seed)

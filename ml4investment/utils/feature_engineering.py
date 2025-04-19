@@ -253,7 +253,7 @@ def _calculate_obv(df: pd.DataFrame) -> pd.Series:
 
 def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """ Process Data, including washing, removing Nan, scaling and spliting for training purpose """
-    process_features_config_data = {}
+    process_feature_config = {}
     X_train_list, X_test_list = [], []
     y_train_list, y_test_list = [], []
 
@@ -271,15 +271,15 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
         raise ValueError("Stock mapping mismatch.")
     all_stock_ids = sorted(set(stock_id_map.values()))
     cat_type = pd.CategoricalDtype(categories=all_stock_ids)
-    process_features_config_data['cat_type'] = cat_type
-    process_features_config_data['stock_id_map'] = stock_id_map
+    process_feature_config['cat_type'] = cat_type
+    process_feature_config['stock_id_map'] = stock_id_map
 
     stock_sector_id_map = settings.STOCK_SECTOR_ID_MAP
     
     all_sector_ids = sorted(set(stock_sector_id_map.values()))
     cat_sector_type = pd.CategoricalDtype(categories=all_sector_ids)
-    process_features_config_data['cat_sector_type'] = cat_sector_type
-    process_features_config_data['stock_sector_id_map'] = stock_sector_id_map
+    process_feature_config['cat_sector_type'] = cat_sector_type
+    process_feature_config['stock_sector_id_map'] = stock_sector_id_map
 
     with tqdm(daily_dict.items(), desc="Process features for train") as pbar:
         for stock, df in pbar:
@@ -350,7 +350,7 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             y_train_list.append(y_train_stock)
             y_test_list.append(y_test_stock)
 
-            process_features_config_data[stock] = {
+            process_feature_config[stock] = {
                 'lower_bound': lower_bound,
                 'upper_bound': upper_bound,
                 'scaler': scaler
@@ -367,7 +367,7 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
         logger.error("Temporal leakage detected in combined dataset")
         raise ValueError("Temporal leakage detected in combined dataset")
 
-    return X_train, X_test, y_train, y_test, process_features_config_data
+    return X_train, X_test, y_train, y_test, process_feature_config
 
 
 def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:

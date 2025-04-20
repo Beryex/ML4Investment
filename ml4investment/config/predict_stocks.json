@@ -1,20 +1,14 @@
 {
     "predict_stocks": [
-        "MA",
-        "NOW",
-        "INTC",
-        "TSLA",
-        "XOM",
-        "CVX",
-        "PLTR",
-        "UBER",
-        "GOOGL",
-        "TCEHY",
-        "TSM",
         "UNH",
-        "WMT",
-        "COST",
-        "KO",
-        "JNJ"
+        "TCEHY",
+        "INTC",
+        "LRCX",
+        "TSLA",
+        "PANW",
+        "NEE",
+        "JPM",
+        "TXN",
+        "PLTR"
     ]
 }

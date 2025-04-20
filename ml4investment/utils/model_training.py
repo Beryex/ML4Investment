@@ -178,14 +178,14 @@ def model_training(x_train: pd.DataFrame,
         for stock_id, acc in stock_sign_acc.items():
             stock = id_to_stock_code(stock_id)
             sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
-        logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
+        # logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
 
         mae_table = PrettyTable()
         mae_table.field_names = ["Stock", "MAE"]
         for stock_id, mae in stock_MAE.items():
             stock = id_to_stock_code(stock_id)
             mae_table.add_row([stock, mae], divider=True)
-        logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
+        # logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
 
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}

@@ -22,7 +22,7 @@ def model_training(x_train: pd.DataFrame,
                    model_hyperparams: dict = None, 
                    use_mae: bool = False,
                    seed: int = 42,
-                   verbose: bool = False) -> lgb.Booster:
+                   verbose: bool = False) -> tuple[lgb.Booster, dict, dict, list, float]:
     """ Time series modeling training pipeline """
     train_set = lgb.Dataset(x_train, 
                             label=y_train, 
@@ -66,7 +66,7 @@ def model_training(x_train: pd.DataFrame,
             'deterministic': True
         }
         
-        tscv = TimeSeriesSplit(n_splits=5)
+        tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
         maes = []
         sign_accs = []
         for fold, (train_idx, valid_idx) in enumerate(tscv.split(x_train)):
@@ -131,7 +131,7 @@ def model_training(x_train: pd.DataFrame,
         best_params,
         train_set=train_set,
         valid_sets=[test_set],
-        num_boost_round=int(best_params['num_rounds']),
+        num_boost_round=int(best_params['num_rounds'] / (1 - 1 / settings.N_SPLIT)),
         callbacks=[
             lgb.log_evaluation(False),
         ]
@@ -139,18 +139,18 @@ def model_training(x_train: pd.DataFrame,
     logger.info("Model training completed")
     
     y_pred = final_model.predict(x_test)
-    mae = mean_absolute_error(y_test, y_pred)
-    sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
-    logger.info(f"Model validation - MAE: {mae:.4f} | Sign Accuracy: {sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
+    overall_mae = mean_absolute_error(y_test, y_pred)
+    overall_sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
+    logger.info(f"Model validation - MAE: {overall_mae:.4f} | Sign Accuracy: {overall_sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
     
+    importance = final_model.feature_importance(importance_type='gain')
+    features = final_model.feature_name()
+    sorted_feature_imp = sorted(zip(importance, features), reverse=True)
     if verbose:
         features_table = PrettyTable()
         features_table.field_names = ["Feature", "Importance"]
-        importance = final_model.feature_importance(importance_type='gain')
-        features = final_model.feature_name()
-        sorted_imp = sorted(zip(importance, features), reverse=True)
         logger.info("Top features by gain:")
-        for imp, name in sorted_imp:
+        for imp, name in sorted_feature_imp:
             features_table.add_row([name, f"{imp:.2f}"], divider=True)
         logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
@@ -172,21 +172,6 @@ def model_training(x_train: pd.DataFrame,
         .sort_values()
     )
 
-    if verbose:
-        sign_acc_table = PrettyTable()
-        sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
-        for stock_id, acc in stock_sign_acc.items():
-            stock = id_to_stock_code(stock_id)
-            sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
-        logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
-
-        mae_table = PrettyTable()
-        mae_table.field_names = ["Stock", "MAE"]
-        for stock_id, mae in stock_MAE.items():
-            stock = id_to_stock_code(stock_id)
-            mae_table.add_row([stock, mae], divider=True)
-        logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
-
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}
     if use_mae:
@@ -197,10 +182,10 @@ def model_training(x_train: pd.DataFrame,
                 predict_stocks["predict_stocks"].append(stock)
     else:
         logger.info("Using sign accuracy for stock selection")
-        for stock_id, acc in stock_sign_acc.items():
+        for stock_id, sign_accuracy in stock_sign_acc.items():
             stock = id_to_stock_code(stock_id)
-            if acc > settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
+            if sign_accuracy > settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
                 predict_stocks["predict_stocks"].append(stock)
     logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
     
-    return final_model, best_params, predict_stocks
+    return final_model, best_params, predict_stocks, sorted_feature_imp, overall_mae

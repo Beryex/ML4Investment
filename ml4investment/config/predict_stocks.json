@@ -1,1 +1,16 @@
-{"predict_stocks": ["UNH", "TSLA", "UBER", "JNJ", "TXN", "APD", "ORCL", "PANW", "WMT", "INTC", "HD", "SHOP", "TCEHY"]}
+{
+    "predict_stocks": [
+        "PANW",
+        "SHOP",
+        "HD",
+        "TXN",
+        "TSLA",
+        "UBER",
+        "TCEHY",
+        "UNH",
+        "GOOGL",
+        "XOM",
+        "LLY",
+        "JPM"
+    ]
+}

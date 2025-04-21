@@ -31,10 +31,14 @@ def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = set
                     start_date=unique_dates.min(),
                     end_date=unique_dates.max()
                 )
+
                 trading_days = schedule.index.date
-                
                 non_trading_dates = [d for d in unique_dates if d not in trading_days]
                 assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates}"
+                
+                unique_dates_set = set(unique_dates)
+                missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
+                assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates}"
                 
                 valid_time_mask = data.index.map(lambda x: nyse.open_at_time(schedule, x))
                 assert valid_time_mask.all(), "Found timestamps outside trading hours"

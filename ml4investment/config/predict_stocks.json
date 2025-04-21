@@ -1,14 +1,16 @@
 {
     "predict_stocks": [
-        "UNH",
-        "TCEHY",
-        "INTC",
-        "LRCX",
-        "TSLA",
         "PANW",
-        "NEE",
-        "JPM",
+        "SHOP",
+        "HD",
         "TXN",
-        "PLTR"
+        "TSLA",
+        "UBER",
+        "TCEHY",
+        "UNH",
+        "GOOGL",
+        "XOM",
+        "LLY",
+        "JPM"
     ]
 }

@@ -66,7 +66,7 @@ def model_training(x_train: pd.DataFrame,
             'deterministic': True
         }
         
-        tscv = TimeSeriesSplit(n_splits=5)
+        tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
         maes = []
         sign_accs = []
         for fold, (train_idx, valid_idx) in enumerate(tscv.split(x_train)):
@@ -131,7 +131,7 @@ def model_training(x_train: pd.DataFrame,
         best_params,
         train_set=train_set,
         valid_sets=[test_set],
-        num_boost_round=int(best_params['num_rounds']),
+        num_boost_round=int(best_params['num_rounds'] / (1 - 1 / settings.N_SPLIT)),
         callbacks=[
             lgb.log_evaluation(False),
         ]
@@ -171,21 +171,6 @@ def model_training(x_train: pd.DataFrame,
         .apply(lambda df: mean_absolute_error(df['y_true'], df['y_pred']))
         .sort_values()
     )
-
-    if verbose:
-        sign_acc_table = PrettyTable()
-        sign_acc_table.field_names = ["Stock", "Sign Accuracy"]
-        for stock_id, acc in stock_sign_acc.items():
-            stock = id_to_stock_code(stock_id)
-            sign_acc_table.add_row([stock, f"{acc * 100:.2f}%"], divider=True)
-        # logger.info(f'\n{sign_acc_table.get_string(title="Per-stock sign accuracy")}')
-
-        mae_table = PrettyTable()
-        mae_table.field_names = ["Stock", "MAE"]
-        for stock_id, mae in stock_MAE.items():
-            stock = id_to_stock_code(stock_id)
-            mae_table.add_row([stock, mae], divider=True)
-        # logger.info(f'\n{mae_table.get_string(title="Per-stock MAE")}')
 
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}

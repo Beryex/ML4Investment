@@ -137,6 +137,7 @@ def train(train_stock_list: list,
             else:
                 logger.info(f"Removing '{feature_to_remove}' degraded performance. Stop RFE.")
                 stop_recursion = True
+        
         logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}")
         if args.verbose:
             logger.info(f"Optimal features: {', '.join(optimal_features)}")

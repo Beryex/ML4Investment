@@ -630,9 +630,12 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             # only train data has NAN caused by lookingback
             X_train_dropna = X_train_stock.dropna()
             y_train_stock = y_train_stock.loc[X_train_dropna.index]
+
+            X_test_dropna = X_test_stock.dropna()
+            y_test_stock = y_test_stock.loc[X_test_dropna.index]
             
             assert X_train_dropna.isnull().sum().sum() == 0, f"Training data contains missing values for stock {stock}"
-            assert X_test_stock.isnull().sum().sum() == 0, f"Testing data contains missing values for stock {stock}"
+            assert X_test_dropna.isnull().sum().sum() == 0, f"Testing data contains missing values for stock {stock}"
 
             boolean_cols = X_train_dropna.select_dtypes(include='bool').columns.tolist()
             numerical_cols = [col for col in X_train_dropna.columns if col not in boolean_cols]
@@ -642,10 +645,10 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             upper_bound = quantiles.xs(0.95)
 
             X_train_clipped = X_train_dropna.copy()
-            X_test_clipped = X_test_stock.copy()
+            X_test_clipped = X_test_dropna.copy()
 
             X_train_clipped[numerical_cols] = X_train_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
-            X_test_clipped[numerical_cols] = X_test_stock[numerical_cols].clip(lower_bound, upper_bound, axis=1)
+            X_test_clipped[numerical_cols] = X_test_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
 
             scaler = RobustScaler()
             X_train_scaled_numerical = pd.DataFrame(

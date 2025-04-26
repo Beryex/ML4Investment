@@ -175,3 +175,8 @@ cython_debug/
 
 # Mac
 .DS_Store
+
+# custom
+ml4investment/config/predict_stocks.json
+ml4investment/data/prod_model.model
+ml4investment/data/prod_process_feature_config.pkl

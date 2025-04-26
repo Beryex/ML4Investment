@@ -184,7 +184,7 @@ def model_training(x_train: pd.DataFrame,
         logger.info("Using sign accuracy for stock selection")
         for stock_id, sign_accuracy in stock_sign_acc.items():
             stock = id_to_stock_code(stock_id)
-            if sign_accuracy > settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
+            if sign_accuracy >= settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
                 predict_stocks["predict_stocks"].append(stock)
     logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
     

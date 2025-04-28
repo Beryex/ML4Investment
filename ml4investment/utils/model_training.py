@@ -36,8 +36,6 @@ def model_training(x_train: pd.DataFrame,
     
     def objective(trial: optuna.Trial) -> float:
         params = {
-            'num_threads': settings.THREAD_NUM,
-            
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
@@ -102,16 +100,14 @@ def model_training(x_train: pd.DataFrame,
             sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2)
         )
-        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=25000)
+        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=172800)
         logger.info("Hyperparameter optimization completed")
 
-        pareto_trials = [t for t in study.best_trials if t.values[1] > settings.SIGN_ACCURACY_THRESHOLD]
-        best_trial = min(pareto_trials, key=lambda t: t.values[0])
+        pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
+        best_trial = max(pareto_trials, key=lambda t: t.values[1])
         best_params = best_trial.params.copy()
         
         best_params.update({
-            'num_threads': settings.THREAD_NUM,
-
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,

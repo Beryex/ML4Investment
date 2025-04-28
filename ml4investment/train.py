@@ -100,10 +100,15 @@ def train(train_stock_list: list,
         original_feature_number = len(optimal_features)
         original_mae = optimal_mae
 
-        stop_recursion = False
-        while not stop_recursion and len(optimal_features) > 1:
-            feature_to_remove = feature_ranking[0]
-            candidate_features = feature_ranking[1:]
+        for feature_to_remove in feature_ranking:
+            if feature_to_remove == 'stock_id':
+                logger.info("Skipping 'stock_id' feature removal")
+                continue
+            if feature_to_remove == 'stock_sector':
+                logger.info("Skipping 'stock_sector' feature removal")
+                continue
+            
+            candidate_features = [f for f in optimal_features if f != feature_to_remove]
 
             X_train_tmp = X_train[candidate_features]
             X_test_tmp = X_test[candidate_features]
@@ -132,11 +137,10 @@ def train(train_stock_list: list,
                 optimal_model_hyperparams = model_hyperparams_tmp
                 optimal_predict_stocks = predict_stocks_tmp
                 optimal_features = candidate_features
-                feature_ranking = list(reversed([f for _, f in sorted_feature_imp_tmp]))
+                logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
                 
             else:
-                logger.info(f"Removing '{feature_to_remove}' degraded performance. Stop RFE.")
-                stop_recursion = True
+                logger.info(f"Removing '{feature_to_remove}' degraded performance.")
         
         logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}")
         if args.verbose:

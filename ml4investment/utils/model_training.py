@@ -20,7 +20,7 @@ def model_training(x_train: pd.DataFrame,
                    target_stock_list: list,
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
-                   use_mae: bool = False,
+                   optimize_predict_stocks: bool = False,
                    seed: int = 42,
                    verbose: bool = False) -> tuple[lgb.Booster, dict, dict, list, float]:
     """ Time series modeling training pipeline """
@@ -170,18 +170,15 @@ def model_training(x_train: pd.DataFrame,
 
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}
-    if use_mae:
-        logger.info("Using MAE for stock selection")
-        for stock_id, mae in stock_MAE.items():
-            stock = id_to_stock_code(stock_id)
-            if mae < settings.MAE_THRESHOLD and stock in target_stock_list:
-                predict_stocks["predict_stocks"].append(stock)
-    else:
+    if optimize_predict_stocks:
         logger.info("Using sign accuracy for stock selection")
         for stock_id, sign_accuracy in stock_sign_acc.items():
             stock = id_to_stock_code(stock_id)
             if sign_accuracy >= settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
                 predict_stocks["predict_stocks"].append(stock)
+    else:
+        logger.info("Using all target stocks for prediction")
+        predict_stocks["predict_stocks"] = target_stock_list
     logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
     
     return final_model, best_params, predict_stocks, sorted_feature_imp, overall_mae

@@ -8,7 +8,6 @@ import lightgbm as lgb
 
 from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed, update_backtest_gains
-from ml4investment.utils.data_loader import fetch_trading_day_data
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_backtest
 from ml4investment.utils.model_predicting import model_predict

@@ -8,7 +8,7 @@ from argparse import Namespace
 
 from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed
-from ml4investment.utils.data_loader import fetch_trading_day_data, merge_fetched_data, get_target_stocks
+from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data, get_target_stocks
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_train
 from ml4investment.utils.model_training import model_training
@@ -38,7 +38,12 @@ def train(train_stock_list: list,
         logger.info(f"Load input target stocks")
 
     if fetched_data is None:
-        fetched_data = fetch_trading_day_data(train_stock_list, period = settings.TRAIN_DAYS)
+        if args.load_local_data:
+            logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
+            fetched_data = load_local_data(train_stock_list, start_year=settings.START_YEAR, base_dir=args.local_data_pth)
+        else:
+            logger.info(f"Fetch data from yfinance for the given stocks")
+            fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.TRAIN_DAYS)
 
         """ Fetch new data and merge with previous saved data """
         if os.path.exists(args.save_fetched_data_pth):
@@ -88,6 +93,7 @@ def train(train_stock_list: list,
         target_stock_list,
         categorical_features=['stock_id', 'stock_sector'],
         model_hyperparams=model_hyperparams,
+        optimize_predict_stocks=args.optimize_predict_stocks,
         seed=seed,
         verbose=args.verbose
     )
@@ -125,6 +131,7 @@ def train(train_stock_list: list,
                 target_stock_list,
                 categorical_features=categorical_features_tmp,
                 model_hyperparams=model_hyperparams,
+                optimize_predict_stocks=args.optimize_predict_stocks,
                 seed=seed,
                 verbose=args.verbose
             )
@@ -172,7 +179,10 @@ if __name__ == "__main__":
     parser.add_argument("--train_stocks", type=str, default='config/train_stocks.json')
     parser.add_argument("--get_target_stocks_from_scratch", "-gtsfs", action='store_true', default=False)
     parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
+    parser.add_argument("--optimize_predict_stocks", "-ops", action='store_true', default=False)
     parser.add_argument("--fetch_data_from_scratch", "-fdfs", action='store_true', default=False)
+    parser.add_argument("--load_local_data", "-lld", action='store_true', default=False)
+    parser.add_argument("--local_data_pth", "-ldp", type=str)
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
     parser.add_argument("--optimize_model_hyperparameters", "-omhp", action='store_true', default=False)
     parser.add_argument("--model_hyperparams_pth", "-mhpp", type=str, default='data/prod_model_hyperparams.json')

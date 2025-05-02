@@ -8,7 +8,6 @@ import lightgbm as lgb
 
 from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed
-from ml4investment.utils.data_loader import fetch_trading_day_data
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_predict
 from ml4investment.utils.model_predicting import model_predict
@@ -25,7 +24,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
 
     predict_data = {}
     for stock in train_stock_list:
-        predict_data[stock] = fetched_data[stock]
+        predict_data[stock] = fetched_data[stock].tail((settings.CALCULATING_FEATURE_DAYS + 1) * settings.DATA_PER_DAY)
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(predict_data)

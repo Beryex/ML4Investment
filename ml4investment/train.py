@@ -8,7 +8,7 @@ from argparse import Namespace
 
 from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed
-from ml4investment.utils.data_loader import fetch_trading_day_data, merge_fetched_data, get_target_stocks
+from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data, get_target_stocks
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_train
 from ml4investment.utils.model_training import model_training
@@ -38,7 +38,12 @@ def train(train_stock_list: list,
         logger.info(f"Load input target stocks")
 
     if fetched_data is None:
-        fetched_data = fetch_trading_day_data(train_stock_list, period = settings.TRAIN_DAYS)
+        if args.load_local_data:
+            logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
+            fetched_data = load_local_data(train_stock_list, start_year=settings.START_YEAR, base_dir=args.local_data_pth, check_valid=True)
+        else:
+            logger.info(f"Fetch data from yfinance for the given stocks")
+            fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.TRAIN_DAYS)
 
         """ Fetch new data and merge with previous saved data """
         if os.path.exists(args.save_fetched_data_pth):
@@ -88,6 +93,7 @@ def train(train_stock_list: list,
         target_stock_list,
         categorical_features=['stock_id', 'stock_sector'],
         model_hyperparams=model_hyperparams,
+        optimize_predict_stocks=args.optimize_predict_stocks,
         seed=seed,
         verbose=args.verbose
     )
@@ -100,10 +106,15 @@ def train(train_stock_list: list,
         original_feature_number = len(optimal_features)
         original_mae = optimal_mae
 
-        stop_recursion = False
-        while not stop_recursion and len(optimal_features) > 1:
-            feature_to_remove = feature_ranking[0]
-            candidate_features = feature_ranking[1:]
+        for feature_to_remove in feature_ranking:
+            if feature_to_remove == 'stock_id':
+                logger.info("Skipping 'stock_id' feature removal")
+                continue
+            if feature_to_remove == 'stock_sector':
+                logger.info("Skipping 'stock_sector' feature removal")
+                continue
+            
+            candidate_features = [f for f in optimal_features if f != feature_to_remove]
 
             X_train_tmp = X_train[candidate_features]
             X_test_tmp = X_test[candidate_features]
@@ -120,6 +131,7 @@ def train(train_stock_list: list,
                 target_stock_list,
                 categorical_features=categorical_features_tmp,
                 model_hyperparams=model_hyperparams,
+                optimize_predict_stocks=args.optimize_predict_stocks,
                 seed=seed,
                 verbose=args.verbose
             )
@@ -132,11 +144,10 @@ def train(train_stock_list: list,
                 optimal_model_hyperparams = model_hyperparams_tmp
                 optimal_predict_stocks = predict_stocks_tmp
                 optimal_features = candidate_features
-                feature_ranking = list(reversed([f for _, f in sorted_feature_imp_tmp]))
+                logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
                 
             else:
-                logger.info(f"Removing '{feature_to_remove}' degraded performance. Stop RFE.")
-                stop_recursion = True
+                logger.info(f"Removing '{feature_to_remove}' degraded performance.")
         
         logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}")
         if args.verbose:
@@ -166,9 +177,12 @@ def train(train_stock_list: list,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default='config/train_stocks.json')
-    parser.add_argument("--get_target_stocks_from_scratch", "-gtsfs", action='store_true', default=False)
+    parser.add_argument("--optimize_target_stocks", "-ots", action='store_true', default=False)
     parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
+    parser.add_argument("--optimize_predict_stocks", "-ops", action='store_true', default=False)
     parser.add_argument("--fetch_data_from_scratch", "-fdfs", action='store_true', default=False)
+    parser.add_argument("--load_local_data", "-lld", action='store_true', default=False)
+    parser.add_argument("--local_data_pth", "-ldp", type=str)
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
     parser.add_argument("--optimize_model_hyperparameters", "-omhp", action='store_true', default=False)
     parser.add_argument("--model_hyperparams_pth", "-mhpp", type=str, default='data/prod_model_hyperparams.json')
@@ -192,7 +206,7 @@ if __name__ == "__main__":
     set_random_seed(seed)
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    target_stock_list = None if args.get_target_stocks_from_scratch else json.load(open(args.target_stocks, 'rb'))["target_stocks"]
+    target_stock_list = None if args.optimize_target_stocks else json.load(open(args.target_stocks, 'rb'))["target_stocks"]
     fetched_data = None if args.fetch_data_from_scratch else pickle.load(open(args.fetched_data_pth, 'rb'))
     model_hyperparams = None if args.optimize_model_hyperparameters else json.load(open(args.model_hyperparams_pth, 'r'))
     selected_features = None if args.optimize_model_features else json.load(open(args.features_pth, 'r'))["features"]

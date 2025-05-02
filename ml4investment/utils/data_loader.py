@@ -3,15 +3,16 @@ import yfinance as yf
 import logging
 import pandas_market_calendars as mcal
 from tqdm import tqdm
+from pathlib import Path
 
 from ml4investment.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = False) -> pd.DataFrame:
-    """ Fetch trading day data for a given stock for the last given days with given interval """
-    logger.info(f"Fetching data for {stocks}")
+def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = False) -> pd.DataFrame:
+    """ Fetch trading day data for a given stock for the last given days with given interval from yfinance """
+    logger.info(f"Fetching data from yfinance for {stocks}")
     fetched_data = {}
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:
@@ -22,11 +23,10 @@ def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = set
             
             assert not data.empty, f"No data fetched for {stock}"
             data.columns = data.columns.droplevel(1) if isinstance(data.columns, pd.MultiIndex) else data.columns
-            
-            nyse = mcal.get_calendar('NYSE')
             unique_dates = pd.Series(data.index.date).unique()
 
             if len(unique_dates) > 0 and check_valid:
+                nyse = mcal.get_calendar('NYSE')
                 schedule = nyse.schedule(
                     start_date=unique_dates.min(),
                     end_date=unique_dates.max()
@@ -44,6 +44,73 @@ def fetch_trading_day_data(stocks: list, period: str = '2y', interval: str = set
                 assert valid_time_mask.all(), "Found timestamps outside trading hours"
             
                 logger.info(f"Data validation passed for {stock}")
+
+            fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
+    
+    return fetched_data
+
+
+def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
+    """ Load the local data for the given srocks """
+    logger.info(f"Loading local data for {stocks}")
+    fetched_data = {}
+
+    base_dir = Path(base_dir)
+    if not base_dir.is_dir():
+        logger.error(f"Base directory {base_dir} does not exist")
+        raise ValueError(f"Base directory {base_dir} does not exist")
+    
+    year_folders = []
+    for item in base_dir.iterdir():
+        if item.is_dir() and item.name.isdigit():
+            year_folders.append(int(item.name))
+    latest_year = max(year_folders)
+
+    with tqdm(stocks, desc="Fetch stocks data") as pbar:
+        for stock in pbar:
+            
+            data_list = []
+            for year in range(start_year, latest_year + 1):
+                pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
+                year_str = str(year)
+                file_name = f"{stock}.csv"
+                file_path = base_dir / year_str / file_name
+                
+                try:
+                    df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                except FileNotFoundError:
+                    tqdm.write(f"Data not found for {stock} in year {year}, skip it")
+                    continue
+                data_list.append(df_year)
+            
+            data = pd.concat(data_list)
+            data = data.between_time('09:30', '15:30')
+            data.sort_index(inplace=True)
+            data = data.tz_localize('America/New_York', ambiguous='infer')
+            unique_dates = pd.Series(data.index.date).unique()
+
+            if len(unique_dates) > 0 and check_valid:
+                nyse = mcal.get_calendar('NYSE')
+                schedule = nyse.schedule(
+                    start_date=unique_dates.min(),
+                    end_date=unique_dates.max()
+                )
+
+                trading_days = schedule.index.date
+                non_trading_dates = [d for d in unique_dates if d not in trading_days]
+                assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates} for {stock}"
+
+                unique_dates_set = set(unique_dates)
+                missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
+                assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates} for {stock}"
+
+                start_time = pd.Timestamp('09:30').time()
+                end_time = pd.Timestamp('15:30').time()
+                
+                time_series = data.index.time
+                valid_time_mask = (time_series >= start_time) & (time_series <= end_time)
+
+                assert valid_time_mask.all(), f"Found timestamps outside manual trading hours (09:30-15:30) for {stock}"
 
             fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
     

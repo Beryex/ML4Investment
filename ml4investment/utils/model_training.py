@@ -20,7 +20,7 @@ def model_training(x_train: pd.DataFrame,
                    target_stock_list: list,
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
-                   use_mae: bool = False,
+                   optimize_predict_stocks: bool = False,
                    seed: int = 42,
                    verbose: bool = False) -> tuple[lgb.Booster, dict, dict, list, float]:
     """ Time series modeling training pipeline """
@@ -36,8 +36,6 @@ def model_training(x_train: pd.DataFrame,
     
     def objective(trial: optuna.Trial) -> float:
         params = {
-            'num_threads': settings.THREAD_NUM,
-            
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
@@ -102,16 +100,14 @@ def model_training(x_train: pd.DataFrame,
             sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2)
         )
-        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=25000)
+        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=172800)
         logger.info("Hyperparameter optimization completed")
 
-        pareto_trials = [t for t in study.best_trials if t.values[1] > settings.SIGN_ACCURACY_THRESHOLD]
-        best_trial = min(pareto_trials, key=lambda t: t.values[0])
+        pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
+        best_trial = max(pareto_trials, key=lambda t: t.values[1])
         best_params = best_trial.params.copy()
         
         best_params.update({
-            'num_threads': settings.THREAD_NUM,
-
             'objective': 'regression_l1',
             'metric': 'mae',
             'verbosity': -1,
@@ -174,18 +170,15 @@ def model_training(x_train: pd.DataFrame,
 
     logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
     predict_stocks = {"predict_stocks": []}
-    if use_mae:
-        logger.info("Using MAE for stock selection")
-        for stock_id, mae in stock_MAE.items():
-            stock = id_to_stock_code(stock_id)
-            if mae < settings.MAE_THRESHOLD and stock in target_stock_list:
-                predict_stocks["predict_stocks"].append(stock)
-    else:
+    if optimize_predict_stocks:
         logger.info("Using sign accuracy for stock selection")
         for stock_id, sign_accuracy in stock_sign_acc.items():
             stock = id_to_stock_code(stock_id)
             if sign_accuracy >= settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
                 predict_stocks["predict_stocks"].append(stock)
+    else:
+        logger.info("Using all target stocks for prediction")
+        predict_stocks["predict_stocks"] = target_stock_list
     logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
     
     return final_model, best_params, predict_stocks, sorted_feature_imp, overall_mae

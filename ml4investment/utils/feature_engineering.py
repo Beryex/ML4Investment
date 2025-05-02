@@ -227,8 +227,19 @@ def calculate_features(df_dict: dict) -> dict:
             }
 
             nyse = mcal.get_calendar('NYSE')
-            trading_day = CustomBusinessDay(calendar=nyse)
-            daily_df = df.resample(trading_day).agg(aggregation_rules).ffill()
+            unique_dates_idx = pd.to_datetime(pd.Series(df.index.normalize().date).unique())
+            
+            schedule = nyse.schedule(
+                start_date=unique_dates_idx.min(),
+                end_date=unique_dates_idx.max()
+            )
+            correct_trading_dates = schedule.index.date
+            buggy_trading_day_offset = CustomBusinessDay(calendar=nyse)     # here will introduce holidays caused by bug in CustomBusinessDay, so we add these fix code below
+            daily_df_aggregated_potentially_incorrect = df.resample(buggy_trading_day_offset).agg(aggregation_rules)
+            index_dates_array = daily_df_aggregated_potentially_incorrect.index.normalize().date
+            correct_rows_mask = np.isin(index_dates_array, correct_trading_dates)
+            daily_df_filtered = daily_df_aggregated_potentially_incorrect[correct_rows_mask]
+            daily_df = daily_df_filtered.ffill()
             daily_df.columns = ['_'.join(col).strip() for col in daily_df.columns]
 
             # === Daily Targets ===
@@ -772,8 +783,8 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
 
     backtest_day_numbers = {df.shape[0] for df in daily_dict.values()}
     if len(backtest_day_numbers) != 1:
-        logger.error("Backtest day number mismatched")
-        raise ValueError("Backtest day number mismatched")
+        logger.error(f"Backtest day number mismatched: {backtest_day_numbers}")
+        raise ValueError(f"Backtest day number mismatched: {backtest_day_numbers}")
     backtest_day_number = backtest_day_numbers.pop()
 
     for i in range(backtest_day_number):

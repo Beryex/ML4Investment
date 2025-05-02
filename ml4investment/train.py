@@ -40,7 +40,7 @@ def train(train_stock_list: list,
     if fetched_data is None:
         if args.load_local_data:
             logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
-            fetched_data = load_local_data(train_stock_list, start_year=settings.START_YEAR, base_dir=args.local_data_pth)
+            fetched_data = load_local_data(train_stock_list, start_year=settings.START_YEAR, base_dir=args.local_data_pth, check_valid=True)
         else:
             logger.info(f"Fetch data from yfinance for the given stocks")
             fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.TRAIN_DAYS)
@@ -177,7 +177,7 @@ def train(train_stock_list: list,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default='config/train_stocks.json')
-    parser.add_argument("--get_target_stocks_from_scratch", "-gtsfs", action='store_true', default=False)
+    parser.add_argument("--optimize_target_stocks", "-ots", action='store_true', default=False)
     parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
     parser.add_argument("--optimize_predict_stocks", "-ops", action='store_true', default=False)
     parser.add_argument("--fetch_data_from_scratch", "-fdfs", action='store_true', default=False)
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     set_random_seed(seed)
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    target_stock_list = None if args.get_target_stocks_from_scratch else json.load(open(args.target_stocks, 'rb'))["target_stocks"]
+    target_stock_list = None if args.optimize_target_stocks else json.load(open(args.target_stocks, 'rb'))["target_stocks"]
     fetched_data = None if args.fetch_data_from_scratch else pickle.load(open(args.fetched_data_pth, 'rb'))
     model_hyperparams = None if args.optimize_model_hyperparameters else json.load(open(args.model_hyperparams_pth, 'r'))
     selected_features = None if args.optimize_model_features else json.load(open(args.features_pth, 'r'))["features"]

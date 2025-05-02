@@ -24,7 +24,7 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
 
     backtest_data = {}
     for stock in train_stock_list:
-        backtest_data[stock] = fetched_data[stock]
+        backtest_data[stock] = fetched_data[stock].tail((settings.CALCULATING_FEATURE_DAYS + settings.TEST_DAY_NUMBER) * settings.DATA_PER_DAY)
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(backtest_data)

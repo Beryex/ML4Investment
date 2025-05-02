@@ -783,8 +783,8 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
 
     backtest_day_numbers = {df.shape[0] for df in daily_dict.values()}
     if len(backtest_day_numbers) != 1:
-        logger.error("Backtest day number mismatched")
-        raise ValueError("Backtest day number mismatched")
+        logger.error(f"Backtest day number mismatched: {backtest_day_numbers}")
+        raise ValueError(f"Backtest day number mismatched: {backtest_day_numbers}")
     backtest_day_number = backtest_day_numbers.pop()
 
     for i in range(backtest_day_number):

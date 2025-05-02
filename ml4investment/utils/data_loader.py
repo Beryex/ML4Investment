@@ -98,16 +98,19 @@ def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: b
 
                 trading_days = schedule.index.date
                 non_trading_dates = [d for d in unique_dates if d not in trading_days]
-                assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates}"
-                
+                assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates} for {stock}"
+
                 unique_dates_set = set(unique_dates)
                 missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
-                assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates}"
+                assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates} for {stock}"
+
+                start_time = pd.Timestamp('09:30').time()
+                end_time = pd.Timestamp('15:30').time()
                 
-                valid_time_mask = data.index.map(lambda x: nyse.open_at_time(schedule, x))
-                assert valid_time_mask.all(), "Found timestamps outside trading hours"
-            
-                logger.info(f"Data validation passed for {stock}")
+                time_series = data.index.time
+                valid_time_mask = (time_series >= start_time) & (time_series <= end_time)
+
+                assert valid_time_mask.all(), f"Found timestamps outside manual trading hours (09:30-15:30) for {stock}"
 
             fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
     

@@ -8,31 +8,21 @@ import logging
 from prettytable import PrettyTable
 
 from ml4investment.config import settings
-from ml4investment.utils.feature_engineering import id_to_stock_code
 
 logger = logging.getLogger(__name__)
 
 
 def model_training(x_train: pd.DataFrame, 
-                   x_test: pd.DataFrame, 
                    y_train: pd.Series, 
-                   y_test: pd.Series, 
-                   target_stock_list: list,
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
-                   optimize_predict_stocks: bool = False,
                    seed: int = 42,
-                   verbose: bool = False) -> tuple[lgb.Booster, dict, dict, list, float]:
+                   verbose: bool = False) -> tuple[lgb.Booster, dict, float, float, list]:
     """ Time series modeling training pipeline """
     train_set = lgb.Dataset(x_train, 
                             label=y_train, 
                             categorical_feature=categorical_features, 
                             free_raw_data=False)
-    test_set = lgb.Dataset(x_test, 
-                           label=y_test, 
-                           categorical_feature=categorical_features,
-                           reference=train_set, 
-                           free_raw_data=False)
     
     def objective(trial: optuna.Trial) -> float:
         params = {
@@ -88,6 +78,35 @@ def model_training(x_train: pd.DataFrame,
             maes.append(mean_absolute_error(cur_y_val, preds))
             sign_accs.append((np.sign(preds) == np.sign(cur_y_val.to_numpy())).mean())
 
+        avg_mae, avg_sign_acc = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2000))
+            
+        return avg_mae, avg_sign_acc
+    
+    def cross_validate(params: dict, num_rounds) -> tuple[float, float]:
+        tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
+        maes = []
+        sign_accs = []
+        for fold, (train_idx, valid_idx) in enumerate(tscv.split(x_train)):
+            cur_x_train, cur_x_val = x_train.iloc[train_idx], x_train.iloc[valid_idx]
+            cur_y_train, cur_y_val = y_train.iloc[train_idx], y_train.iloc[valid_idx]
+            
+            model = lgb.train(
+                params,
+                train_set=lgb.Dataset(cur_x_train, 
+                                      label=cur_y_train,
+                                      categorical_feature=categorical_features),
+                valid_sets=[lgb.Dataset(cur_x_val, 
+                                        label=cur_y_val,
+                                        categorical_feature=categorical_features)],
+                num_boost_round=num_rounds,
+                callbacks=[
+                    lgb.log_evaluation(False),
+                ]
+            )
+            preds = model.predict(cur_x_val)
+            maes.append(mean_absolute_error(cur_y_val, preds))
+            sign_accs.append((np.sign(preds) == np.sign(cur_y_val.to_numpy())).mean())
+
         avg_mae = np.mean(maes)
         avg_sign_acc = np.mean(sign_accs)
             
@@ -106,6 +125,8 @@ def model_training(x_train: pd.DataFrame,
         pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
         best_trial = max(pareto_trials, key=lambda t: t.values[1])
         best_params = best_trial.params.copy()
+        best_mae = best_trial.values[0]
+        best_sign_accuracy = best_trial.values[1]
         
         best_params.update({
             'objective': 'regression_l1',
@@ -117,27 +138,28 @@ def model_training(x_train: pd.DataFrame,
             'force_row_wise': True,
             'deterministic': True
         })
-        logger.info(f"Optimized model parameters: {best_params}")
+        logger.info(f"Selected Best Trial Number: {best_trial.number}")
+        logger.info(f"  Parameters: {best_params}")
+        logger.info(f"  Metrics:")
+        logger.info(f"    MAE (avg over folds): {best_mae:.4f}")
+        logger.info(f"    Sign Accuracy (avg over folds): {best_sign_accuracy:.2f}%")
 
     else:
         best_params = model_hyperparams.copy()
+        best_mae, best_sign_accuracy = cross_validate(best_params, num_rounds=best_params['num_rounds'])
+        logger.info(f"Validation Overall Metrics - MAE: {best_mae:.4f} | Sign Accuracy: {best_sign_accuracy*100:.2f}%")
      
     logger.info("Begin model training with optimized parameters")
     final_model = lgb.train(
         best_params,
         train_set=train_set,
-        valid_sets=[test_set],
+        valid_sets=[],
         num_boost_round=int(best_params['num_rounds'] / (1 - 1 / settings.N_SPLIT)),
         callbacks=[
             lgb.log_evaluation(False),
         ]
     )
     logger.info("Model training completed")
-    
-    y_pred = final_model.predict(x_test)
-    overall_mae = mean_absolute_error(y_test, y_pred)
-    overall_sign_accuracy = (np.sign(y_pred) == np.sign(y_test.to_numpy())).mean() * 100
-    logger.info(f"Model validation - MAE: {overall_mae:.4f} | Sign Accuracy: {overall_sign_accuracy:.2f}% | Features used: {len(final_model.feature_name())}")
     
     importance = final_model.feature_importance(importance_type='gain')
     features = final_model.feature_name()
@@ -150,35 +172,4 @@ def model_training(x_train: pd.DataFrame,
             features_table.add_row([name, f"{imp:.2f}"], divider=True)
         logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
-    test_df = x_test.copy()
-    test_df['y_true'] = y_test.values
-    test_df['y_pred'] = y_pred
-    test_df['sign_correct'] = (np.sign(test_df['y_true']) == np.sign(test_df['y_pred'])).astype(int)
-    test_df['MAE'] = mean_absolute_error(test_df['y_true'], test_df['y_pred'])
-
-    stock_sign_acc = (
-        test_df.groupby('stock_id', observed=True)['sign_correct']
-        .mean()
-        .sort_values(ascending=False)
-    )
-
-    stock_MAE = (
-        test_df.groupby('stock_id', observed=True)
-        .apply(lambda df: mean_absolute_error(df['y_true'], df['y_pred']))
-        .sort_values()
-    )
-
-    logger.info(f"Selecting predict stocks from target stocks: {target_stock_list}")
-    predict_stocks = {"predict_stocks": []}
-    if optimize_predict_stocks:
-        logger.info("Using sign accuracy for stock selection")
-        for stock_id, sign_accuracy in stock_sign_acc.items():
-            stock = id_to_stock_code(stock_id)
-            if sign_accuracy >= settings.SIGN_ACCURACY_THRESHOLD and stock in target_stock_list:
-                predict_stocks["predict_stocks"].append(stock)
-    else:
-        logger.info("Using all target stocks for prediction")
-        predict_stocks["predict_stocks"] = target_stock_list
-    logger.info(f"Suggested predict stocks: {predict_stocks['predict_stocks']}")
-    
-    return final_model, best_params, predict_stocks, sorted_feature_imp, overall_mae
+    return final_model, best_params, best_mae, best_sign_accuracy, sorted_feature_imp

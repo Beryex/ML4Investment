@@ -1,6 +1,5 @@
 # Data Fetching
 TRAIN_DAYS = '60d'
-START_YEAR=2015
 MIN_CAP = 1e9
 TARGET_STOCK_DISTRIBUTION = {
     "Technology": 20,
@@ -15,6 +14,10 @@ TARGET_STOCK_DISTRIBUTION = {
     "Real Estate": 3,
     "Basic Materials": 3
 }
+
+# Feature Engineering
+DATA_INTERVAL = '30m'
+DATA_PER_DAY = 13
 SECTOR_ID_MAP = {
     "Technology": 1,
     "Healthcare": 2,
@@ -39,11 +42,9 @@ STOCK_SECTOR_ID_MAP = {'AAPL': 1, 'MSFT': 1, 'NVDA': 1, 'TSM': 1, 'AVGO': 1, 'OR
                        'NEE': 9, 
                        'LIN': 11, 'APD': 11, 'FCX': 11, 'DOW': 11, 'CLF': 11}
 
-# Feature Engineering
-DATA_INTERVAL = '30m'
-DATA_PER_DAY = 13
-
 # Model Training
+TRAINING_DATA_START_DATE = '2015-01-01'
+TRAINING_DATA_END_DATE = '2025-01-01'
 N_SPLIT = 5
 THREAD_NUM = 12
 N_TRIALS = 200
@@ -51,6 +52,6 @@ MAE_THRESHOLD = 0.02
 SIGN_ACCURACY_THRESHOLD = 0.5
 
 # Evaluation
-TEST_DAY_NUMBER = 91
+TEST_DAY_NUMBER = 21
 CALCULATING_FEATURE_DAYS = 60
 NUMBER_OF_STOCKS_TO_BUY = 3

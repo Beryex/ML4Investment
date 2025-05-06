@@ -16,9 +16,9 @@ configure_logging(env="prod", file_name="predict.log")
 logger = logging.getLogger("ml4investment.predict")
 
 
-def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
+def predict(train_stock_list: list, target_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
     """ Predict the optimal stock with the highest price change for the given stocks """
-    logger.info(f"Start predict the given stocks: {predict_stock_list}")
+    logger.info(f"Start predict the given stocks: {target_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
     set_random_seed(seed)
 
@@ -50,7 +50,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     logger.info(f"Number of features: {feature_num}")
     
     predictions = {}
-    for stock in predict_stock_list:
+    for stock in target_stock_list:
         today_pred = model_predict(model, X_predict_dict[stock])
         predictions[stock] = today_pred
     
@@ -85,7 +85,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
-    parser.add_argument("--predict_stocks", "-ps", type=str, default='config/predict_stocks.json')
+    parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
     parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config.pkl')
@@ -97,11 +97,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    predict_stock_list = json.load(open(args.predict_stocks, 'r'))["predict_stocks"]
+    target_stock_list = json.load(open(args.target_stocks, 'r'))["target_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
     process_feature_config = pickle.load(open(args.process_feature_config_pth, 'rb'))
     selected_features =json.load(open(args.features_pth, 'r'))["features"]
     model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
-    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config, selected_features, model, seed)
+    predict(train_stock_list, target_stock_list, fetched_data, process_feature_config, selected_features, model, seed)

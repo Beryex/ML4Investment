@@ -50,7 +50,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
     return fetched_data
 
 
-def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
+def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
     """ Load the local data for the given srocks """
     logger.info(f"Loading local data for {stocks}")
     fetched_data = {}
@@ -64,13 +64,14 @@ def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: b
     for item in base_dir.iterdir():
         if item.is_dir() and item.name.isdigit():
             year_folders.append(int(item.name))
+    earliest_year = min(year_folders)
     latest_year = max(year_folders)
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:
         for stock in pbar:
             
             data_list = []
-            for year in range(start_year, latest_year + 1):
+            for year in range(earliest_year, latest_year + 1):
                 pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
                 year_str = str(year)
                 file_name = f"{stock}.csv"

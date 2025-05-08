@@ -141,29 +141,3 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
     return merged, train_data
-
-
-def get_target_stocks(train_stock_list: list) -> list:
-    """ Get target stocks across different sectors with minimum market cap """
-    info_list = []
-    with tqdm(train_stock_list, desc="Fetch stocks data") as pbar:
-        for stock in pbar:
-            pbar.set_postfix({'stock': stock,}, refresh=True)
-
-            stock_info = yf.Ticker(stock).info
-            sector = stock_info.get("sector", "Others")
-            market_cap = stock_info.get("marketCap", 0)
-            info_list.append({"symbol": stock, "sector": sector, "market_cap": market_cap})
-            
-    df = pd.DataFrame(info_list)
-    logger.info(f"Get target stocks with minimum market cap: {settings.MIN_CAP}")
-    df = df[df["market_cap"] >= settings.MIN_CAP].copy()
-    df["sector"] = df["sector"].fillna("Others")
-
-    target_stock_list = []
-    for sector, target_count in settings.TARGET_STOCK_DISTRIBUTION.items():
-        logger.info(f"Get target stocks in sector: {sector} with count: {target_count}")
-        sector_df = df[df["sector"] == sector].sort_values("market_cap", ascending=False)
-        target_stock_list += sector_df.head(target_count)["symbol"].tolist()
-    
-    return target_stock_list

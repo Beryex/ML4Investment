@@ -57,10 +57,11 @@ def train(train_stock_list: list,
         logger.info("Load input model hyperparameter")
         model_hyperparams = json.load(open(args.model_hyperparams_pth, 'r'))
     
-    optimal_model, optimal_model_hyperparams, optimal_mae, optimal_sign_accuracy, sorted_feature_imp = model_training(
+    optimal_model, optimal_model_hyperparams, optimal_mae, optimal_sign_accuracy, sorted_feature_imp, optimal_target_stock_list = model_training(
         X_train, y_train, 
         categorical_features=['stock_id', 'stock_sector'],
         model_hyperparams=model_hyperparams,
+        optimize_target_stocks=args.optimize_target_stocks,
         seed=seed,
         verbose=args.verbose
     )
@@ -92,10 +93,11 @@ def train(train_stock_list: list,
             if 'stock_sector' in X_train_tmp.columns:
                 categorical_features_tmp.append('stock_sector')
             
-            model_tmp, model_hyperparams_tmp, mae_tmp, sign_accuracy_tmp, sorted_feature_imp_tmp = model_training(
+            model_tmp, model_hyperparams_tmp, mae_tmp, sign_accuracy_tmp, sorted_feature_imp_tmp, target_stock_list_tmp = model_training(
                 X_train_tmp, y_train, 
                 categorical_features=categorical_features_tmp,
                 model_hyperparams=model_hyperparams,
+                optimize_target_stocks=args.optimize_target_stocks,
                 seed=seed,
                 verbose=args.verbose
             )
@@ -107,6 +109,7 @@ def train(train_stock_list: list,
                 optimal_model = model_tmp
                 optimal_model_hyperparams = model_hyperparams_tmp
                 optimal_features = candidate_features
+                optimal_target_stock_list = target_stock_list_tmp
                 if args.verbose:
                     logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
                 
@@ -136,6 +139,11 @@ def train(train_stock_list: list,
             json.dump(optimal_model_hyperparams, f, indent=4)
         logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
 
+    target_stocks = {"target_stocks": optimal_target_stock_list}
+    with open(args.save_target_stocks_pth, 'w') as f:
+        json.dump(target_stocks, f, indent=4)
+    logger.info(f"Target stocks saved to {args.save_target_stocks_pth}")
+    
     logger.info("Training process completed.")
 
 
@@ -147,11 +155,13 @@ if __name__ == "__main__":
     parser.add_argument("--model_hyperparams_pth", "-mhpp", type=str, default='data/prod_model_hyperparams.json')
     parser.add_argument("--optimize_model_features", "-omf", action='store_true', default=False)
     parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
+    parser.add_argument("--optimize_target_stocks", "-ots", action='store_true', default=False)
 
     parser.add_argument("--save_process_feature_config_pth", "-spfcp", type=str, default='data/prod_process_feature_config.pkl')
     parser.add_argument("--save_model_pth", "-smp", type=str, default='data/prod_model.model')
     parser.add_argument("--save_features_pth", "-sfp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--save_model_hyperparams_pth", "-smhpp", type=str, default='data/prod_model_hyperparams.json')
+    parser.add_argument("--save_target_stocks_pth", type=str, default='config/target_stocks.json')
 
     parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)

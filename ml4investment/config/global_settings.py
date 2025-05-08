@@ -1,23 +1,9 @@
 # Data Fetching
 TRAIN_DAYS = '60d'
-MIN_CAP = 1e9
-TARGET_STOCK_DISTRIBUTION = {
-    "Technology": 20,
-    "Healthcare": 3,
-    "Financial Services": 3,
-    "Consumer Defensive": 3,
-    "Consumer Cyclical": 3,
-    "Industrials": 3,
-    "Energy": 3,
-    "Communication Services": 3,
-    "Utilities": 3,
-    "Real Estate": 3,
-    "Basic Materials": 3
-}
-
-# Feature Engineering
 DATA_INTERVAL = '30m'
 DATA_PER_DAY = 13
+
+# Feature Engineering
 SECTOR_ID_MAP = {
     "Technology": 1,
     "Healthcare": 2,
@@ -49,7 +35,7 @@ N_SPLIT = 5
 THREAD_NUM = 12
 N_TRIALS = 200
 MAE_THRESHOLD = 0.02
-SIGN_ACCURACY_THRESHOLD = 0.5
+SIGN_ACCURACY_THRESHOLD = 0.60
 
 # Evaluation
 TEST_DAY_NUMBER = 21

@@ -20,13 +20,6 @@ def fetch_data(train_stock_list: list,
     logger.info(f"Start fetching data for given stocks: {train_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
 
-    if args.optimize_target_stocks:
-        target_stock_list = get_target_stocks(train_stock_list)
-        target_stocks = {"target_stocks": target_stock_list}
-        with open(args.save_target_stocks_pth, 'w') as f:
-            json.dump(target_stocks, f, indent=4)
-        logger.info(f"Target stocks saved to {args.save_target_stocks_pth}")
-
     """ Fetch new data """
     if args.load_local_data:
         logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
@@ -44,7 +37,7 @@ def fetch_data(train_stock_list: list,
         logger.info("No previous data found. Starting fresh.")
         existing_data = {}
     
-    merged_data, fetched_data = merge_fetched_data(existing_data, fetched_data)
+    merged_data, _ = merge_fetched_data(existing_data, fetched_data)
     with open(args.save_fetched_data_pth, 'wb') as f:
         pickle.dump(merged_data, f)
     logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")
@@ -67,12 +60,10 @@ def fetch_data(train_stock_list: list,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default='config/train_stocks.json')
-    parser.add_argument("--optimize_target_stocks", "-ots", action='store_true', default=False)
     parser.add_argument("--load_local_data", "-lld", action='store_true', default=False)
     parser.add_argument("--local_data_pth", "-ldp", type=str)
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
     
-    parser.add_argument("--save_target_stocks_pth", type=str, default='config/target_stocks.json')
     parser.add_argument("--save_fetched_data_pth", "-sfdp", type=str, default='data/fetched_data.pkl')
 
     args = parser.parse_args()

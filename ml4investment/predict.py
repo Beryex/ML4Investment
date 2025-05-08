@@ -54,14 +54,15 @@ def predict(train_stock_list: list, target_stock_list: list, fetched_data: dict,
         today_pred = model_predict(model, X_predict_dict[stock])
         predictions[stock] = today_pred
     
-    results_table = PrettyTable()
-    field_names = ["Stock"]
-    field_names.append("Open_Price_Change_Predict")
-    results_table.field_names = field_names
-    for stock in sorted(predictions, key=predictions.get, reverse=True):
-        row = [stock, f"{predictions[stock]:+.2%}"]
-        results_table.add_row(row, divider=True)
-    logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
+    if args.verbose:
+        results_table = PrettyTable()
+        field_names = ["Stock"]
+        field_names.append("Open_Price_Change_Predict")
+        results_table.field_names = field_names
+        for stock in sorted(predictions, key=predictions.get, reverse=True):
+            row = [stock, f"{predictions[stock]:+.2%}"]
+            results_table.add_row(row, divider=True)
+        logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
 
     sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
     top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
 
+    parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()

@@ -8,6 +8,7 @@ from tqdm import tqdm
 from sklearn.utils import shuffle
 
 from ml4investment.config import settings
+from ml4investment.utils.utils import stock_code_to_id
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -806,17 +807,3 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, target_st
                 y_backtest_dict[i][stock] = y_backtest_stock.iloc[i]
 
     return X_backtest_dict, y_backtest_dict, backtest_day_number
-
-
-def stock_code_to_id(stock_code: str) -> int:
-    """ Change the stock string to the sum of ASCII value of each char within the stock code """
-    return sum(ord(c) * 256 ** i for i, c in enumerate(reversed(stock_code)))
-
-def id_to_stock_code(code_id: int) -> str:
-    """  Change the stock id to the string of stock code """
-    chars = []
-    while code_id > 0:
-        ascii_val = code_id % 256
-        chars.append(chr(ascii_val))
-        code_id //= 256
-    return ''.join(reversed(chars))

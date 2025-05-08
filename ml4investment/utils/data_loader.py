@@ -50,7 +50,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
     return fetched_data
 
 
-def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
+def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
     """ Load the local data for the given srocks """
     logger.info(f"Loading local data for {stocks}")
     fetched_data = {}
@@ -64,13 +64,14 @@ def load_local_data(stocks: list, start_year: int, base_dir: str, check_valid: b
     for item in base_dir.iterdir():
         if item.is_dir() and item.name.isdigit():
             year_folders.append(int(item.name))
+    earliest_year = min(year_folders)
     latest_year = max(year_folders)
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:
         for stock in pbar:
             
             data_list = []
-            for year in range(start_year, latest_year + 1):
+            for year in range(earliest_year, latest_year + 1):
                 pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
                 year_str = str(year)
                 file_name = f"{stock}.csv"
@@ -140,29 +141,3 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
     return merged, train_data
-
-
-def get_target_stocks(train_stock_list: list) -> list:
-    """ Get target stocks across different sectors with minimum market cap """
-    info_list = []
-    with tqdm(train_stock_list, desc="Fetch stocks data") as pbar:
-        for stock in pbar:
-            pbar.set_postfix({'stock': stock,}, refresh=True)
-
-            stock_info = yf.Ticker(stock).info
-            sector = stock_info.get("sector", "Others")
-            market_cap = stock_info.get("marketCap", 0)
-            info_list.append({"symbol": stock, "sector": sector, "market_cap": market_cap})
-            
-    df = pd.DataFrame(info_list)
-    logger.info(f"Get target stocks with minimum market cap: {settings.MIN_CAP}")
-    df = df[df["market_cap"] >= settings.MIN_CAP].copy()
-    df["sector"] = df["sector"].fillna("Others")
-
-    target_stock_list = []
-    for sector, target_count in settings.TARGET_STOCK_DISTRIBUTION.items():
-        logger.info(f"Get target stocks in sector: {sector} with count: {target_count}")
-        sector_df = df[df["sector"] == sector].sort_values("market_cap", ascending=False)
-        target_stock_list += sector_df.head(target_count)["symbol"].tolist()
-    
-    return target_stock_list

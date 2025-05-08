@@ -16,9 +16,9 @@ configure_logging(env="prod", file_name="predict.log")
 logger = logging.getLogger("ml4investment.predict")
 
 
-def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
+def predict(train_stock_list: list, target_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
     """ Predict the optimal stock with the highest price change for the given stocks """
-    logger.info(f"Start predict the given stocks: {predict_stock_list}")
+    logger.info(f"Start predict the given stocks: {target_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
     set_random_seed(seed)
 
@@ -50,18 +50,19 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     logger.info(f"Number of features: {feature_num}")
     
     predictions = {}
-    for stock in predict_stock_list:
+    for stock in target_stock_list:
         today_pred = model_predict(model, X_predict_dict[stock])
         predictions[stock] = today_pred
     
-    results_table = PrettyTable()
-    field_names = ["Stock"]
-    field_names.append("Open_Price_Change_Predict")
-    results_table.field_names = field_names
-    for stock in sorted(predictions, key=predictions.get, reverse=True):
-        row = [stock, f"{predictions[stock]:+.2%}"]
-        results_table.add_row(row, divider=True)
-    logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
+    if args.verbose:
+        results_table = PrettyTable()
+        field_names = ["Stock"]
+        field_names.append("Open_Price_Change_Predict")
+        results_table.field_names = field_names
+        for stock in sorted(predictions, key=predictions.get, reverse=True):
+            row = [stock, f"{predictions[stock]:+.2%}"]
+            results_table.add_row(row, divider=True)
+        logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
 
     sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
     top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
@@ -85,23 +86,24 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
-    parser.add_argument("--predict_stocks", "-ps", type=str, default='config/predict_stocks.json')
+    parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
     parser.add_argument("--process_feature_config_pth", "-pfcp", type=str, default='data/prod_process_feature_config.pkl')
     parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
 
+    parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    predict_stock_list = json.load(open(args.predict_stocks, 'r'))["predict_stocks"]
+    target_stock_list = json.load(open(args.target_stocks, 'r'))["target_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
     process_feature_config = pickle.load(open(args.process_feature_config_pth, 'rb'))
     selected_features =json.load(open(args.features_pth, 'r'))["features"]
     model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
-    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config, selected_features, model, seed)
+    predict(train_stock_list, target_stock_list, fetched_data, process_feature_config, selected_features, model, seed)

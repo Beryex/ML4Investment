@@ -5,6 +5,8 @@ from prettytable import PrettyTable
 import json
 import pickle
 import lightgbm as lgb
+import numpy as np
+from sklearn.metrics import mean_absolute_error
 
 from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed, update_backtest_gains
@@ -16,9 +18,9 @@ configure_logging(env="prod", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
 
 
-def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
+def backtest(train_stock_list:list, target_stock_list: list, fetched_data: dict, process_feature_config: dict, selected_features: dict, model: lgb.Booster, seed: int):
     """ Backtest the model performance for the given stocks for the last week """
-    logger.info(f"Start backtesting based on the given stocks: {predict_stock_list}")
+    logger.info(f"Start backtesting based on the given stocks: {target_stock_list}")
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
     set_random_seed(seed)
 
@@ -29,7 +31,7 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
 
     daily_features_data = calculate_features(backtest_data)
 
-    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config, predict_stock_list)
+    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config, target_stock_list)
 
     for i in range(backtest_day_number):
         for stock, data in X_backtest_dict[i].items():
@@ -60,7 +62,7 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
     y_predict_dict = {}
     for i in range(backtest_day_number):
         y_predict_dict[i] = {}
-        for stock in predict_stock_list:
+        for stock in target_stock_list:
             y_predict_dict[i][stock] = model_predict(model, X_backtest_dict[i][stock])
 
     results_table = PrettyTable()
@@ -98,15 +100,31 @@ def predict(train_stock_list:list, predict_stock_list: list, fetched_data: dict,
         ]
         results_table.add_row(row, divider=True)
     results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A"], divider=True)
-    logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
+    if args.verbose:
+        logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
 
     logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}, Optimal overall gain: {gain_optimal:+.2%}, Efficiency: {(gain_actual/gain_optimal):.2%}")
+
+    all_predictions = []
+    all_actuals = []
+    for i in range(backtest_day_number):
+        for stock in target_stock_list:
+            all_predictions.append(y_predict_dict[i][stock])
+            all_actuals.append(y_backtest_dict[i][stock])
+    all_actuals_np = np.array(all_actuals)
+    all_predictions_np = np.array(all_predictions)
+
+    overall_mae = mean_absolute_error(all_actuals_np, all_predictions_np)
+    sign_matches = (np.sign(all_predictions_np) == np.sign(all_actuals_np))
+    overall_sign_accuracy = np.mean(sign_matches)
+    logger.info(f"Backtest Overall Metrics - MAE: {overall_mae:.4f} | Sign Accuracy: {overall_sign_accuracy*100:.2f}%")
 
     logger.info("Backtesting process completed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default='config/train_stocks.json')
+    parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
     parser.add_argument("--predict_stocks", "-ps", type=str, default='config/predict_stocks.json')
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
 
@@ -114,16 +132,17 @@ if __name__ == "__main__":
     parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--model_pth", "-mp", type=str, default='data/prod_model.model')
 
+    parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)
 
     args = parser.parse_args()
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    predict_stock_list = json.load(open(args.predict_stocks, 'r'))["predict_stocks"]
+    target_stock_list = json.load(open(args.target_stocks, 'r'))["target_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
     process_feature_config = pickle.load(open(args.process_feature_config_pth, 'rb'))
     selected_features =json.load(open(args.features_pth, 'r'))["features"]
     model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
-    predict(train_stock_list, predict_stock_list, fetched_data, process_feature_config, selected_features, model, seed)
+    backtest(train_stock_list, target_stock_list, fetched_data, process_feature_config, selected_features, model, seed)

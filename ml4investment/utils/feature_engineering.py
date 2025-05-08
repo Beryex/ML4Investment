@@ -8,6 +8,7 @@ from tqdm import tqdm
 from sklearn.utils import shuffle
 
 from ml4investment.config import settings
+from ml4investment.utils.utils import stock_code_to_id
 
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -596,57 +597,44 @@ def _calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod
 def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """ Process Data, including washing, removing Nan, scaling and spliting for training purpose """
     process_feature_config = {}
-    X_train_list, X_test_list = [], []
-    y_train_list, y_test_list = [], []
+    X_train_list, y_train_list = [], []
 
     for stock, df in daily_dict.items():
         daily_dict[stock] = df.dropna(subset=['Target'])
 
     stock_id_map = {}
-    with tqdm(daily_dict.keys(), desc="Calculate stocks data") as pbar:
-        for stock in pbar:
-            pbar.set_postfix({'stock': stock}, refresh=True)
-            stock_id_map[stock] = stock_code_to_id(stock)
-
+    for stock in daily_dict.keys():
+        stock_id_map[stock] = stock_code_to_id(stock)
     if len(stock_id_map.values()) != len(set(stock_id_map.values())):
         logger.error(f"Stock mapping mismatch. Stock id number: {len(stock_id_map.values())}, Stock number: {len(set(stock_id_map.values()))}")
         raise ValueError("Stock mapping mismatch.")
-    all_stock_ids = sorted(set(stock_id_map.values()))
-    cat_type = pd.CategoricalDtype(categories=all_stock_ids)
-    process_feature_config['cat_type'] = cat_type
     process_feature_config['stock_id_map'] = stock_id_map
 
+    all_stock_ids = sorted(set(stock_id_map.values()))
+    cat_stock_id_type = pd.CategoricalDtype(categories=all_stock_ids)
+    process_feature_config['cat_stock_id_type'] = cat_stock_id_type
+
     stock_sector_id_map = settings.STOCK_SECTOR_ID_MAP
+    process_feature_config['stock_sector_id_map'] = stock_sector_id_map
     
     all_sector_ids = sorted(set(stock_sector_id_map.values()))
-    cat_sector_type = pd.CategoricalDtype(categories=all_sector_ids)
-    process_feature_config['cat_sector_type'] = cat_sector_type
-    process_feature_config['stock_sector_id_map'] = stock_sector_id_map
+    cat_sector_id_type = pd.CategoricalDtype(categories=all_sector_ids)
+    process_feature_config['cat_sector_id_type'] = cat_sector_id_type
 
     with tqdm(daily_dict.items(), desc="Process features for train") as pbar:
         for stock, df in pbar:
             pbar.set_postfix({'stock': stock}, refresh=True)
 
-            split_idx = len(df) - test_number
-            train_df = df.iloc[:split_idx]
-            test_df = df.iloc[split_idx:]
-
             feature_cols = [col for col in df.columns if col != 'Target']
             target_col = 'Target'
-            X_train_stock = train_df[feature_cols]
-            y_train_stock = train_df[target_col]
-            X_test_stock = test_df[feature_cols]
-            y_test_stock = test_df[target_col]
+            X_train_stock = df[feature_cols]
+            y_train_stock = df[target_col]
 
             # only train data has NAN caused by lookingback
             X_train_dropna = X_train_stock.dropna()
             y_train_stock = y_train_stock.loc[X_train_dropna.index]
-
-            X_test_dropna = X_test_stock.dropna()
-            y_test_stock = y_test_stock.loc[X_test_dropna.index]
             
             assert X_train_dropna.isnull().sum().sum() == 0, f"Training data contains missing values for stock {stock}"
-            assert X_test_dropna.isnull().sum().sum() == 0, f"Testing data contains missing values for stock {stock}"
 
             boolean_cols = X_train_dropna.select_dtypes(include='bool').columns.tolist()
             numerical_cols = [col for col in X_train_dropna.columns if col not in boolean_cols]
@@ -656,10 +644,8 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             upper_bound = quantiles.xs(0.95)
 
             X_train_clipped = X_train_dropna.copy()
-            X_test_clipped = X_test_dropna.copy()
 
             X_train_clipped[numerical_cols] = X_train_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
-            X_test_clipped[numerical_cols] = X_test_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
 
             scaler = RobustScaler()
             X_train_scaled_numerical = pd.DataFrame(
@@ -667,31 +653,19 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
                 columns=numerical_cols,
                 index=X_train_clipped.index
             )
-            X_test_scaled_numerical = pd.DataFrame(
-                scaler.transform(X_test_clipped[numerical_cols]),
-                columns=numerical_cols,
-                index=X_test_clipped.index
-            )
 
             X_train_scaled = pd.concat([X_train_scaled_numerical, X_train_clipped[boolean_cols]], axis=1)
-            X_test_scaled = pd.concat([X_test_scaled_numerical, X_test_clipped[boolean_cols]], axis=1)
 
             stock_id = stock_id_map[stock]
             X_train_scaled['stock_id'] = stock_id
-            X_test_scaled['stock_id'] = stock_id
-            X_train_scaled['stock_id'] = X_train_scaled['stock_id'].astype(cat_type)
-            X_test_scaled['stock_id'] = X_test_scaled['stock_id'].astype(cat_type)
+            X_train_scaled['stock_id'] = X_train_scaled['stock_id'].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_train_scaled['stock_sector'] = sector_id
-            X_test_scaled['stock_sector'] = sector_id
-            X_train_scaled['stock_sector'] = X_train_scaled['stock_sector'].astype(cat_sector_type)
-            X_test_scaled['stock_sector'] = X_test_scaled['stock_sector'].astype(cat_sector_type)
+            X_train_scaled['stock_sector'] = X_train_scaled['stock_sector'].astype(cat_sector_id_type)
 
             X_train_list.append(X_train_scaled)
-            X_test_list.append(X_test_scaled)
             y_train_list.append(y_train_stock)
-            y_test_list.append(y_test_stock)
 
             process_feature_config[stock] = {
                 'lower_bound': lower_bound,
@@ -700,27 +674,21 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             }
 
     X_train = pd.concat(X_train_list)
-    X_test = pd.concat(X_test_list)
     y_train = pd.concat(y_train_list)
-    y_test = pd.concat(y_test_list)
 
     X_train, y_train = shuffle(X_train, y_train, random_state=seed)
 
-    if X_train.index.max() >= X_test.index.min():
-        logger.error("Temporal leakage detected in combined dataset")
-        raise ValueError("Temporal leakage detected in combined dataset")
-
-    return X_train, X_test, y_train, y_test, process_feature_config
+    return X_train, y_train, process_feature_config
 
 
 def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
     """ Process Data, including washing, removing Nan, scaling and spliting for prediction purpose """
     X_predict_dict = {}
 
-    cat_type = config_data['cat_type']
     stock_id_map = config_data['stock_id_map']
-    cat_sector_type = config_data['cat_sector_type']
+    cat_stock_id_type = config_data['cat_stock_id_type']
     stock_sector_id_map = config_data['stock_sector_id_map']
+    cat_sector_id_type = config_data['cat_sector_id_type']
 
     with tqdm(daily_dict.items(), desc="Process features for predict") as pbar:
         for stock, df in pbar:
@@ -753,11 +721,11 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
 
             stock_id = stock_id_map[stock]
             X_predict_scaled['stock_id'] = stock_id
-            X_predict_scaled['stock_id'] = X_predict_scaled['stock_id'].astype(cat_type)
+            X_predict_scaled['stock_id'] = X_predict_scaled['stock_id'].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_predict_scaled['stock_sector'] = sector_id
-            X_predict_scaled['stock_sector'] = X_predict_scaled['stock_sector'].astype(cat_sector_type)
+            X_predict_scaled['stock_sector'] = X_predict_scaled['stock_sector'].astype(cat_sector_id_type)
 
             X_predict = X_predict_scaled.iloc[[-1]].copy()
             X_predict_dict[stock] = X_predict
@@ -765,15 +733,15 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
     return X_predict_dict
 
 
-def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_stock_list: list) -> tuple[dict, dict, int]:
+def process_features_for_backtest(daily_dict: dict, config_data: dict, target_stock_list: list) -> tuple[dict, dict, int]:
     """ Process Data, including washing, removing Nan, scaling and spliting for backtest purpose """
     X_backtest_dict = {}
     y_backtest_dict = {}
 
-    cat_type = config_data['cat_type']
     stock_id_map = config_data['stock_id_map']
-    cat_sector_type = config_data['cat_sector_type']
+    cat_stock_id_type = config_data['cat_stock_id_type']
     stock_sector_id_map = config_data['stock_sector_id_map']
+    cat_sector_id_type = config_data['cat_sector_id_type']
     
     for stock, df in daily_dict.items():
         daily_dict[stock] = df.dropna(subset=['Target'])
@@ -791,7 +759,7 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
         X_backtest_dict[i] = {}
         y_backtest_dict[i] = {}
 
-    with tqdm(predict_stock_list, desc="Process features for backtest") as pbar:
+    with tqdm(target_stock_list, desc="Process features for backtest") as pbar:
         for stock in pbar:
             pbar.set_postfix({'stock': stock,}, refresh=True)
 
@@ -828,28 +796,14 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
 
             stock_id = stock_id_map[stock]
             X_backtest_scaled['stock_id'] = stock_id
-            X_backtest_scaled['stock_id'] = X_backtest_scaled['stock_id'].astype(cat_type)
+            X_backtest_scaled['stock_id'] = X_backtest_scaled['stock_id'].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_backtest_scaled['stock_sector'] = sector_id
-            X_backtest_scaled['stock_sector'] = X_backtest_scaled['stock_sector'].astype(cat_sector_type)
+            X_backtest_scaled['stock_sector'] = X_backtest_scaled['stock_sector'].astype(cat_sector_id_type)
 
             for i in range(backtest_day_number):
                 X_backtest_dict[i][stock] = X_backtest_scaled.iloc[[i]]
                 y_backtest_dict[i][stock] = y_backtest_stock.iloc[i]
 
     return X_backtest_dict, y_backtest_dict, backtest_day_number
-
-
-def stock_code_to_id(stock_code: str) -> int:
-    """ Change the stock string to the sum of ASCII value of each char within the stock code """
-    return sum(ord(c) * 256 ** i for i, c in enumerate(reversed(stock_code)))
-
-def id_to_stock_code(code_id: int) -> str:
-    """  Change the stock id to the string of stock code """
-    chars = []
-    while code_id > 0:
-        ascii_val = code_id % 256
-        chars.append(chr(ascii_val))
-        code_id //= 256
-    return ''.join(reversed(chars))

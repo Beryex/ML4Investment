@@ -140,6 +140,7 @@ def train(train_stock_list: list,
         logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
 
     target_stocks = {"target_stocks": optimal_target_stock_list}
+    os.makedirs(os.path.dirname(args.save_target_stocks_pth), exist_ok=True)
     with open(args.save_target_stocks_pth, 'w') as f:
         json.dump(target_stocks, f, indent=4)
     logger.info(f"Target stocks saved to {args.save_target_stocks_pth}")

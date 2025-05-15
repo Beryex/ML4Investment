@@ -7,7 +7,7 @@ import pickle
 from argparse import Namespace
 
 from ml4investment.config import settings
-from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data, get_target_stocks
+from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data
 from ml4investment.utils.logging import configure_logging
 
 configure_logging(env="prod", file_name="fetch_data.log")

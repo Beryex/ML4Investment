@@ -733,7 +733,7 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
     return X_predict_dict
 
 
-def process_features_for_backtest(daily_dict: dict, config_data: dict, target_stock_list: list) -> tuple[dict, dict, int]:
+def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_stock_list: list) -> tuple[dict, dict, int]:
     """ Process Data, including washing, removing Nan, scaling and spliting for backtest purpose """
     X_backtest_dict = {}
     y_backtest_dict = {}
@@ -759,7 +759,7 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, target_st
         X_backtest_dict[i] = {}
         y_backtest_dict[i] = {}
 
-    with tqdm(target_stock_list, desc="Process features for backtest") as pbar:
+    with tqdm(predict_stock_list, desc="Process features for backtest") as pbar:
         for stock in pbar:
             pbar.set_postfix({'stock': stock,}, refresh=True)
 

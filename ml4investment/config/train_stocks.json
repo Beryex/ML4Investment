@@ -1,5 +1,13 @@
 {
     "train_stocks": [
+        "QQQ",
+        "SPY",
+        "DIA",
+        "VTV",
+        "VUG",
+        "EFA",
+        "KWEB",
+        "GLD",
         "AAPL",
         "MSFT",
         "NVDA",

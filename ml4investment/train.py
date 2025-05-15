@@ -12,11 +12,12 @@ from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_train
 from ml4investment.utils.model_training import model_training
 
-configure_logging(env="prod", file_name="train.log")
+configure_logging(env="train", file_name="train.log")
 logger = logging.getLogger("ml4investment.train")
 
 
 def train(train_stock_list: list, 
+          target_stock_list: list,
           fetched_data: dict, 
           seed: int,
           args: Namespace):
@@ -57,11 +58,12 @@ def train(train_stock_list: list,
         logger.info("Load input model hyperparameter")
         model_hyperparams = json.load(open(args.model_hyperparams_pth, 'r'))
     
-    optimal_model, optimal_model_hyperparams, optimal_mae, optimal_sign_accuracy, sorted_feature_imp, optimal_target_stock_list = model_training(
+    optimal_model, optimal_model_hyperparams, optimal_mae, optimal_sign_accuracy, sorted_feature_imp, optimal_predict_stock_list = model_training(
         X_train, y_train, 
         categorical_features=['stock_id', 'stock_sector'],
         model_hyperparams=model_hyperparams,
-        optimize_target_stocks=args.optimize_target_stocks,
+        target_stock_list=target_stock_list,
+        optimize_predict_stocks=args.optimize_predict_stocks,
         seed=seed,
         verbose=args.verbose
     )
@@ -93,11 +95,12 @@ def train(train_stock_list: list,
             if 'stock_sector' in X_train_tmp.columns:
                 categorical_features_tmp.append('stock_sector')
             
-            model_tmp, model_hyperparams_tmp, mae_tmp, sign_accuracy_tmp, sorted_feature_imp_tmp, target_stock_list_tmp = model_training(
+            model_tmp, model_hyperparams_tmp, mae_tmp, sign_accuracy_tmp, sorted_feature_imp_tmp, predict_stock_list_tmp = model_training(
                 X_train_tmp, y_train, 
                 categorical_features=categorical_features_tmp,
                 model_hyperparams=model_hyperparams,
-                optimize_target_stocks=args.optimize_target_stocks,
+                target_stock_list=target_stock_list,
+                optimize_predict_stocks=args.optimize_predict_stocks,
                 seed=seed,
                 verbose=args.verbose
             )
@@ -109,7 +112,7 @@ def train(train_stock_list: list,
                 optimal_model = model_tmp
                 optimal_model_hyperparams = model_hyperparams_tmp
                 optimal_features = candidate_features
-                optimal_target_stock_list = target_stock_list_tmp
+                optimal_predict_stock_list = predict_stock_list_tmp
                 if args.verbose:
                     logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
                 
@@ -139,11 +142,11 @@ def train(train_stock_list: list,
             json.dump(optimal_model_hyperparams, f, indent=4)
         logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
 
-    target_stocks = {"target_stocks": optimal_target_stock_list}
-    os.makedirs(os.path.dirname(args.save_target_stocks_pth), exist_ok=True)
-    with open(args.save_target_stocks_pth, 'w') as f:
-        json.dump(target_stocks, f, indent=4)
-    logger.info(f"Target stocks saved to {args.save_target_stocks_pth}")
+    predict_stocks = {"predict_stocks": optimal_predict_stock_list}
+    os.makedirs(os.path.dirname(args.save_predict_stocks_pth), exist_ok=True)
+    with open(args.save_predict_stocks_pth, 'w') as f:
+        json.dump(predict_stocks, f, indent=4)
+    logger.info(f"Target stocks saved to {args.save_predict_stocks_pth}")
     
     logger.info("Training process completed.")
 
@@ -151,18 +154,19 @@ def train(train_stock_list: list,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default='config/train_stocks.json')
+    parser.add_argument("--target_stocks", type=str, default='config/target_stocks.json')
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
     parser.add_argument("--optimize_model_hyperparameters", "-omhp", action='store_true', default=False)
     parser.add_argument("--model_hyperparams_pth", "-mhpp", type=str, default='data/prod_model_hyperparams.json')
     parser.add_argument("--optimize_model_features", "-omf", action='store_true', default=False)
     parser.add_argument("--features_pth", "-fp", type=str, default='data/prod_model_features.json')
-    parser.add_argument("--optimize_target_stocks", "-ots", action='store_true', default=False)
+    parser.add_argument("--optimize_predict_stocks", "-ops", action='store_true', default=False)
 
     parser.add_argument("--save_process_feature_config_pth", "-spfcp", type=str, default='data/prod_process_feature_config.pkl')
     parser.add_argument("--save_model_pth", "-smp", type=str, default='data/prod_model.model')
     parser.add_argument("--save_features_pth", "-sfp", type=str, default='data/prod_model_features.json')
     parser.add_argument("--save_model_hyperparams_pth", "-smhpp", type=str, default='data/prod_model_hyperparams.json')
-    parser.add_argument("--save_target_stocks_pth", type=str, default='config/target_stocks.json')
+    parser.add_argument("--save_predict_stocks_pth", type=str, default='config/predict_stocks.json')
 
     parser.add_argument("--verbose", "-v", action='store_true', default=False)
     parser.add_argument("--seed", "-s", type=int, default=42)
@@ -173,6 +177,7 @@ if __name__ == "__main__":
     set_random_seed(seed)
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
+    target_stock_list = json.load(open(args.train_stocks, 'r'))["target_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
 
-    train(train_stock_list, fetched_data, seed, args)
+    train(train_stock_list, target_stock_list, fetched_data, seed, args)

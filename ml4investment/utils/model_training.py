@@ -18,7 +18,8 @@ def model_training(x_train: pd.DataFrame,
                    y_train: pd.Series, 
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
-                   optimize_target_stocks: bool = True,
+                   target_stock_list: list = None,
+                   optimize_predict_stocks: bool = True,
                    seed: int = 42,
                    verbose: bool = False) -> tuple[lgb.Booster, dict, float, float, dict, list]:
     """ Time series modeling training pipeline """
@@ -160,8 +161,6 @@ def model_training(x_train: pd.DataFrame,
         logger.info(f"Validation completed")
         logger.info(f"Validation Overall Metrics - MAE: {best_mae:.4f} | Sign Accuracy: {best_sign_accuracy*100:.2f}%")
     
-    logger.info(sorted(best_stock_sign_accs.items(), key=lambda item: item[1], reverse=True))
-    
     logger.info("Begin model training with optimized parameters")
     final_model = lgb.train(
         best_params,
@@ -174,19 +173,19 @@ def model_training(x_train: pd.DataFrame,
     )
     logger.info("Model training completed")
 
-    if optimize_target_stocks:
-        logger.info("Begin target stocks optimization")
-        logger.info(f"Using sign accuracy as the target stocks optimization metric with threshold {settings.SIGN_ACCURACY_THRESHOLD}")
-        target_stock_list = [
+    if optimize_predict_stocks:
+        logger.info("Begin predict stocks optimization")
+        logger.info(f"Using sign accuracy as the predict stocks optimization metric with threshold {settings.SIGN_ACCURACY_THRESHOLD}")
+        predict_stock_list = [
             stock_code
             for stock_code, sign_acc in best_stock_sign_accs.items()
-            if sign_acc > settings.SIGN_ACCURACY_THRESHOLD
+            if (stock_code in target_stock_list and sign_acc > settings.SIGN_ACCURACY_THRESHOLD)
         ]
     else:
-        logger.info("No target stocks optimization. Using all training stocks as target stocks")
-        target_stock_list = list(best_stock_sign_accs.keys())
+        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
+        predict_stock_list = list(best_stock_sign_accs.keys())
     if verbose:
-        logger.info(f"Target stocks: {', '.join(target_stock_list)}")
+        logger.info(f"Target stocks: {', '.join(predict_stock_list)}")
     
     importance = final_model.feature_importance(importance_type='gain')
     features = final_model.feature_name()
@@ -199,4 +198,4 @@ def model_training(x_train: pd.DataFrame,
             features_table.add_row([name, f"{imp:.2f}"], divider=True)
         logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
-    return final_model, best_params, best_mae, best_sign_accuracy, sorted_feature_imp, target_stock_list
+    return final_model, best_params, best_mae, best_sign_accuracy, sorted_feature_imp, predict_stock_list

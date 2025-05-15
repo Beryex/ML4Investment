@@ -3,6 +3,8 @@ import random
 import numpy as np
 import logging
 
+from ml4investment.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,9 +41,9 @@ def update_backtest_gains(
     gain_optimal: float, 
     backtest_day_index: int, 
     number_of_stock_to_buy: int = 2 
-) -> tuple[float, float, float, float, float, float, float]:
+) -> tuple[float, float, float, float, float, float, list]:
     """ Update the backtest gains based on the current day's predictions and actual results """
-    cur_optimal_stocks = [item[0] for item in sorted_stock_gain_backtest_prediction[:number_of_stock_to_buy]]    
+    cur_optimal_stocks = [item[0] for item in sorted_stock_gain_backtest_prediction[:number_of_stock_to_buy]]
     cur_optimal_stocks = [s for s in cur_optimal_stocks if y_predict_dict[backtest_day_index][s] > 0]
     daily_number_of_stock_to_buy = len(cur_optimal_stocks)
 
@@ -51,7 +53,7 @@ def update_backtest_gains(
     gain_optimal *= daily_gain_optimal
 
     if daily_number_of_stock_to_buy == 0:
-        return gain_predict, gain_actual, gain_optimal, 1.0, 1.0, daily_gain_optimal, 0.0
+        return gain_predict, gain_actual, gain_optimal, 1.0, 1.0, daily_gain_optimal, []
     
     predicted_returns = [y_predict_dict[backtest_day_index][s] for s in cur_optimal_stocks]
     total_pred_sum = sum(predicted_returns)
@@ -63,4 +65,5 @@ def update_backtest_gains(
     gain_predict *= daily_gain_predict
     gain_actual  *= daily_gain_actual
 
-    return gain_predict, gain_actual, gain_optimal, daily_gain_predict, daily_gain_actual, daily_gain_optimal, daily_number_of_stock_to_buy
+    return gain_predict, gain_actual, gain_optimal, daily_gain_predict, daily_gain_actual, daily_gain_optimal, cur_optimal_stocks
+    

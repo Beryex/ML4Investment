@@ -7,10 +7,10 @@ import pickle
 from argparse import Namespace
 
 from ml4investment.config import settings
-from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data
+from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data, generate_stock_sectors_id_mapping
 from ml4investment.utils.logging import configure_logging
 
-configure_logging(env="prod", file_name="fetch_data.log")
+configure_logging(env="fetch_data", file_name="fetch_data.log")
 logger = logging.getLogger("ml4investment.fetch_data")
 
 
@@ -54,6 +54,10 @@ def fetch_data(train_stock_list: list,
     logger.info(f"  Overall earliest data timestamp: {min(df.index.min() for df in merged_data.values())}")
     logger.info(f"  Overall latest data timestamp: {max(df.index.max() for df in merged_data.values())}")
 
+    if args.generate_stock_sector_id_mapping:
+        stock_sectors_id_mapping = generate_stock_sectors_id_mapping(train_stock_list)
+        logger.info(f"Stock sectors id mapping: {stock_sectors_id_mapping}")
+
     logger.info("Fetching data completed.")
 
 
@@ -63,6 +67,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_local_data", "-lld", action='store_true', default=False)
     parser.add_argument("--local_data_pth", "-ldp", type=str)
     parser.add_argument("--fetched_data_pth", "-fdp", type=str, default='data/fetched_data.pkl')
+    parser.add_argument("--generate_stock_sector_id_mapping", "-gssim", action='store_true', default=False)
     
     parser.add_argument("--save_fetched_data_pth", "-sfdp", type=str, default='data/fetched_data.pkl')
 

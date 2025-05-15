@@ -36,11 +36,6 @@ def fetch_data(train_stock_list: list,
     else:
         logger.info("No previous data found. Starting fresh.")
         existing_data = {}
-    
-    merged_data, _ = merge_fetched_data(existing_data, fetched_data)
-    with open(args.save_fetched_data_pth, 'wb') as f:
-        pickle.dump(merged_data, f)
-    logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")
 
     logger.info(f"--- Stats for fetched data ---")
     logger.info(f"  Number of stocks: {len(fetched_data)}")
@@ -53,6 +48,11 @@ def fetch_data(train_stock_list: list,
     logger.info(f"  Number of data points: {sum(len(df) for df in merged_data.values())}")
     logger.info(f"  Overall earliest data timestamp: {min(df.index.min() for df in merged_data.values())}")
     logger.info(f"  Overall latest data timestamp: {max(df.index.max() for df in merged_data.values())}")
+
+    merged_data, _ = merge_fetched_data(existing_data, fetched_data)
+    with open(args.save_fetched_data_pth, 'wb') as f:
+        pickle.dump(merged_data, f)
+    logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")
 
     if args.generate_stock_sector_id_mapping:
         stock_sectors_id_mapping = generate_stock_sectors_id_mapping(train_stock_list)

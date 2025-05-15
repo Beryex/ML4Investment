@@ -183,7 +183,7 @@ def model_training(x_train: pd.DataFrame,
         ]
     else:
         logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
-        predict_stock_list = list(best_stock_sign_accs.keys())
+        predict_stock_list = target_stock_list
     if verbose:
         logger.info(f"Target stocks: {', '.join(predict_stock_list)}")
     

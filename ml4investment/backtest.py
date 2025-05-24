@@ -71,7 +71,8 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
         "Predict daily gain", 
         "Actual daily gain", 
         "Optimal daily gain", 
-        "Predict optimal stock to buy"
+        "Predict optimal stock to buy",
+        "Actual optimal stock to buy"
     ]
     gain_predict = 1
     gain_actual = 1
@@ -79,7 +80,7 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
     for i in range(backtest_day_number):
         sorted_stock_gain_backtest_prediction = sorted(y_predict_dict[i].items(), key=lambda x: x[1], reverse=True)
         sorted_stock_gain_backtest_actual = sorted(y_backtest_dict[i].items(), key=lambda x: x[1], reverse=True)
-        gain_predict, gain_actual, gain_optimal, daily_gain_predict, daily_gain_actual, daily_gain_optimal, cur_optimal_stocks = update_backtest_gains(
+        gain_predict, gain_actual, gain_optimal, daily_gain_predict, daily_gain_actual, daily_gain_optimal, cur_optimal_stocks, cur_actual_optimal_stocks = update_backtest_gains(
             sorted_stock_gain_backtest_prediction,
             sorted_stock_gain_backtest_actual,
             y_predict_dict,
@@ -94,16 +95,20 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
         cur_optimal_stocks_with_sector = []
         for stock in cur_optimal_stocks:
             cur_optimal_stocks_with_sector.append(f"{stock} ({settings.STOCK_SECTOR_ID_MAP[stock]})")
+        cur_actual_optimal_stocks_with_sector = []
+        for stock in cur_actual_optimal_stocks:
+            cur_actual_optimal_stocks_with_sector.append(f"{stock} ({settings.STOCK_SECTOR_ID_MAP[stock]})")
         
         row = [
             cur_day, 
             f"{daily_gain_predict:+.2%}",
             f"{daily_gain_actual:+.2%}",
             f"{daily_gain_optimal:+.2%}", 
-            cur_optimal_stocks_with_sector
+            cur_optimal_stocks_with_sector,
+            cur_actual_optimal_stocks_with_sector
         ]
         results_table.add_row(row, divider=True)
-    results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A"], divider=True)
+    results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A"], divider=True)
     if args.verbose:
         logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
 

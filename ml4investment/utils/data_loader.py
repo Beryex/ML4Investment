@@ -92,6 +92,10 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
                         continue
                     data_list.append(df_year)
             
+            if len(data_list) == 0:
+                logger.warning(f"No data found for {stock} in local files")
+                continue
+
             data = pd.concat(data_list)
             data = data.between_time('09:30', '15:30')
             data.sort_index(inplace=True)
@@ -121,7 +125,7 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
 
                 assert valid_time_mask.all(), f"Found timestamps outside manual trading hours (09:30-15:30) for {stock}"
 
-            fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
+            fetched_data[stock] = data[['open', 'high', 'low', 'close', 'volume']]
     
     return fetched_data
 

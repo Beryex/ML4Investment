@@ -13,7 +13,6 @@
     "max_bin": 160,
     "min_sum_hessian_in_leaf": 0.0713910965618861,
     "num_rounds": 1892,
-    "num_threads": 12,
     "objective": "regression_l1",
     "metric": "mae",
     "verbosity": -1,

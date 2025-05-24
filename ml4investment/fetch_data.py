@@ -29,6 +29,7 @@ def fetch_data(train_stock_list: list,
         fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.TRAIN_DAYS)
 
     """ Merge with previous saved data """
+    logger.info(args.save_fetched_data_pth)
     if os.path.exists(args.save_fetched_data_pth):
         logger.info(f"Loading previously saved data from {args.save_fetched_data_pth}")
         with open(args.save_fetched_data_pth, 'rb') as f:
@@ -36,6 +37,7 @@ def fetch_data(train_stock_list: list,
     else:
         logger.info("No previous data found. Starting fresh.")
         existing_data = {}
+    merged_data, _ = merge_fetched_data(existing_data, fetched_data)
 
     logger.info(f"--- Stats for fetched data ---")
     logger.info(f"  Number of stocks: {len(fetched_data)}")
@@ -49,7 +51,7 @@ def fetch_data(train_stock_list: list,
     logger.info(f"  Overall earliest data timestamp: {min(df.index.min() for df in merged_data.values())}")
     logger.info(f"  Overall latest data timestamp: {max(df.index.max() for df in merged_data.values())}")
 
-    merged_data, _ = merge_fetched_data(existing_data, fetched_data)
+    os.makedirs(os.path.dirname(args.save_fetched_data_pth), exist_ok=True)
     with open(args.save_fetched_data_pth, 'wb') as f:
         pickle.dump(merged_data, f)
     logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")

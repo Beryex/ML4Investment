@@ -177,7 +177,7 @@ if __name__ == "__main__":
     set_random_seed(seed)
 
     train_stock_list = json.load(open(args.train_stocks, 'r'))["train_stocks"]
-    target_stock_list = json.load(open(args.train_stocks, 'r'))["target_stocks"]
+    target_stock_list = json.load(open(args.target_stocks, 'r'))["target_stocks"]
     fetched_data = pickle.load(open(args.fetched_data_pth, 'rb'))
 
     train(train_stock_list, target_stock_list, fetched_data, seed, args)

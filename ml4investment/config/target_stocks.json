@@ -1,15 +1,12 @@
 {
     "target_stocks": [
-        "AAPL", "MSFT", "NVDA", "AAPL", "AVGO", "TSM", "ORCL", "PLTR", "TXN", "INTC", "AMD", "DDOG",
+        "MSFT", "NVDA", "AVGO", "TSM", "ORCL", "PLTR", "TXN", "INTC", "AMD",
         "LLY", "JNJ",
-        "JPM", "V",
-        "WMT", "COST", "KO",
-        "AMZN", "TSLA", "NKE", "SBUX",
+        "JPM",
+        "COST", "KO",
+        "AMZN", "TSLA", "BABA", "NKE", "LULU", "SBUX",
         "GE", "RTX", "LMT",
-        "XOM", "CVX",
-        "GOOGL", "META", "NFLX", "BIDU",
-        "NEE",
-        "LIN",
-        "QQQ", "SPY", "DIA", "VTV", "VUG", "EFA", "KWEB", "GLD"
+        "XOM", 
+        "GOOGL"
     ]
 }

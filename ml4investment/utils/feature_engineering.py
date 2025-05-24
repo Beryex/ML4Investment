@@ -399,7 +399,8 @@ def calculate_features(df_dict: dict) -> dict:
                 market_open = trading_hours.iloc[0]['market_open']
                 market_close = trading_hours.iloc[0]['market_close']
                 if market_open <= now <= market_close:
-                    daily_df = daily_df.drop(daily_df.index[-1])
+                    if not daily_df.empty and daily_df.index[-1].date() == now.date():
+                        daily_df = daily_df.drop(daily_df.index[-1])
             
             daily_dict[stock] = daily_df
 
@@ -633,7 +634,6 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             # only train data has NAN caused by lookingback
             X_train_dropna = X_train_stock.dropna()
             y_train_stock = y_train_stock.loc[X_train_dropna.index]
-            
             assert X_train_dropna.isnull().sum().sum() == 0, f"Training data contains missing values for stock {stock}"
 
             boolean_cols = X_train_dropna.select_dtypes(include='bool').columns.tolist()
@@ -776,7 +776,6 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
 
             X_backtest_dropna = X_backtest_stock.dropna()
             y_backtest_stock = y_backtest_stock.loc[X_backtest_dropna.index]
-            
             assert X_backtest_dropna.isnull().sum().sum() == 0, f"Prediction data contains missing values for stock {stock}"
 
             boolean_cols = X_backtest_dropna.select_dtypes(include='bool').columns.tolist()

@@ -77,27 +77,27 @@ def train(train_stock_list: list,
         original_mae = optimal_mae
         original_sign_accuracy = optimal_sign_accuracy
 
-        for feature_to_remove in feature_ranking:
-            if feature_to_remove == 'stock_id':
-                logger.info("Skipping 'stock_id' feature removal")
-                continue
-            if feature_to_remove == 'stock_sector':
-                logger.info("Skipping 'stock_sector' feature removal")
+        feature_search_num = settings.FEATURE_SEARCH_LIMIT
+
+        while(feature_search_num > 0):
+            feature_search_num -= 1
+            logger.info(f"Current feature search number: {feature_search_num}")
+
+            feature_to_remove = feature_ranking[0]
+            logger.info(f"Trying to remove feature: '{feature_to_remove}'")
+            
+            if feature_to_remove in ['stock_id', 'stock_sector']:
+                logger.info(f"Skipping '{feature_to_remove}' feature removal")
+                feature_ranking = feature_ranking[1:]
                 continue
             
             candidate_features = [f for f in optimal_features if f != feature_to_remove]
 
             X_train_tmp = X_train[candidate_features]
-
-            categorical_features_tmp = []
-            if 'stock_id' in X_train_tmp.columns:
-                categorical_features_tmp.append('stock_id')
-            if 'stock_sector' in X_train_tmp.columns:
-                categorical_features_tmp.append('stock_sector')
             
             model_tmp, model_hyperparams_tmp, mae_tmp, sign_accuracy_tmp, sorted_feature_imp_tmp, predict_stock_list_tmp = model_training(
                 X_train_tmp, y_train, 
-                categorical_features=categorical_features_tmp,
+                categorical_features=['stock_id', 'stock_sector'],
                 model_hyperparams=model_hyperparams,
                 target_stock_list=target_stock_list,
                 optimize_predict_stocks=args.optimize_predict_stocks,
@@ -115,9 +115,10 @@ def train(train_stock_list: list,
                 optimal_predict_stock_list = predict_stock_list_tmp
                 if args.verbose:
                     logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
-                
+                feature_ranking = list(reversed([f for _, f in sorted_feature_imp_tmp]))
             else:
-                logger.info(f"Removing '{feature_to_remove}' degraded performance.")
+                logger.info(f"Removing '{feature_to_remove}' degraded performance. Skip it.")
+                feature_ranking = feature_ranking[1:]
         
         logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}")
         if args.verbose:

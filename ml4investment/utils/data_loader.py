@@ -125,7 +125,7 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
 
                 assert valid_time_mask.all(), f"Found timestamps outside manual trading hours (09:30-15:30) for {stock}"
 
-            fetched_data[stock] = data[['open', 'high', 'low', 'close', 'volume']]
+            fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
     
     return fetched_data
 

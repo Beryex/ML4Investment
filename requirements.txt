@@ -56,4 +56,4 @@ tzdata==2025.1
 urllib3==2.3.0
 wcwidth==0.2.13
 websockets==15.0.1
-yfinance==0.2.59
+yfinance==0.2.61

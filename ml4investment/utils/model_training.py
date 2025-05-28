@@ -57,10 +57,13 @@ def model_training(x_train: pd.DataFrame,
             'force_row_wise': True,
             'deterministic': True
         }
-
-        avg_mae, avg_sign_acc = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2400))
-            
-        return avg_mae, avg_sign_acc
+        
+        avg_mae, avg_sign_accuracy, avg_stock_maes, avg_stock_sign_accs = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2400))
+        
+        trial.set_user_attr("stock_maes", avg_stock_maes)
+        trial.set_user_attr("stock_sign_accs", avg_stock_sign_accs)
+        
+        return avg_mae, avg_sign_accuracy
     
     def cross_validate(params: dict, num_rounds: int) -> tuple[float, float, dict, dict]:
         tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
@@ -126,7 +129,7 @@ def model_training(x_train: pd.DataFrame,
             sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2)
         )
-        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=172800)
+        study.optimize(objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=1000000000)
         logger.info("Hyperparameter optimization completed")
 
         pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
@@ -134,8 +137,8 @@ def model_training(x_train: pd.DataFrame,
         best_params = best_trial.params.copy()
         best_mae = best_trial.values[0]
         best_sign_accuracy = best_trial.values[1]
-        best_stock_maes = best_trial.values[2]
-        best_stock_sign_accs = best_trial.values[3]
+        best_stock_maes = best_trial.user_attrs.get("stock_maes", {})
+        best_stock_sign_accs = best_trial.user_attrs.get("stock_sign_accs", {})
         
         best_params.update({
             'objective': 'regression_l1',

@@ -3,11 +3,13 @@ import logging.config
 from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENVS = ("prod", "test", "dev")
+ENVS = ("fetch_data", "train", "backtest", "predict", "test")
 DEFAULT_NAMES = {
-    "prod": "ml4investment.log",
-    "test": "unit_tests.log",
-    "dev": "algorithm_dev.log"
+    "fetch_data": "fetch_data.log",
+    "train": "train.log",
+    "backtest": "backtest.log",
+    "predict": "predict.log",
+    "test": "test.log"
 }
 
 

@@ -18,7 +18,8 @@ def model_training(x_train: pd.DataFrame,
                    y_train: pd.Series, 
                    categorical_features: list = None,
                    model_hyperparams: dict = None, 
-                   optimize_target_stocks: bool = True,
+                   target_stock_list: list = None,
+                   optimize_predict_stocks: bool = True,
                    seed: int = 42,
                    verbose: bool = False) -> tuple[lgb.Booster, dict, float, float, dict, list]:
     """ Time series modeling training pipeline """
@@ -35,19 +36,19 @@ def model_training(x_train: pd.DataFrame,
             'boosting_type': 'dart',
 
             'drop_rate': trial.suggest_float('drop_rate', 0.05, 0.2),
-            'max_drop': trial.suggest_int('max_drop', 10, 50),
+            'max_drop': trial.suggest_int('max_drop', 10, 40),
             'skip_drop': trial.suggest_float('skip_drop', 0.0, 0.6),
 
-            'num_leaves': trial.suggest_int('num_leaves', 48, 128),
+            'num_leaves': trial.suggest_int('num_leaves', 48, 256),
             'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.08, log=True),
-            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 100, 300),
+            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 20, 200),
 
             'lambda_l1': trial.suggest_float('lambda_l1', 1e-5, 1e-1, log=True),
             'lambda_l2': trial.suggest_float('lambda_l2', 1e-5, 1e-1, log=True),
-            'feature_fraction': trial.suggest_float('feature_fraction', 0.6, 1.0),
+            'feature_fraction': trial.suggest_float('feature_fraction', 0.4, 1.0),
 
             'bagging_freq': trial.suggest_int('bagging_freq', 1, 10),
-            'bagging_fraction': trial.suggest_float('bagging_fraction', 0.6, 0.95),
+            'bagging_fraction': trial.suggest_float('bagging_fraction', 0.6, 1.0),
 
             'max_bin': trial.suggest_int('max_bin', 128, 255),
             'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 0.1),
@@ -56,16 +57,18 @@ def model_training(x_train: pd.DataFrame,
             'force_row_wise': True,
             'deterministic': True
         }
-
-        avg_mae, avg_sign_acc = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2000))
-            
-        return avg_mae, avg_sign_acc
+        
+        avg_mae, avg_sign_accuracy, avg_stock_maes, avg_stock_sign_accs = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2400))
+        
+        trial.set_user_attr("stock_maes", avg_stock_maes)
+        trial.set_user_attr("stock_sign_accs", avg_stock_sign_accs)
+        
+        return avg_mae, avg_sign_accuracy
     
-    def cross_validate(params: dict, num_rounds) -> tuple[float, float]:
+    def cross_validate(params: dict, num_rounds: int) -> tuple[float, float, dict, dict]:
         tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
-        maes_fold_agg = []
-        sign_accs_fold_agg = []
-
+        target_preds_all = []
+        target_y_val_all = []
         stock_maes_collect = defaultdict(list)
         stock_sign_accs_collect = defaultdict(list)
 
@@ -77,10 +80,10 @@ def model_training(x_train: pd.DataFrame,
 
             model = lgb.train(
                 params,
-                train_set=lgb.Dataset(cur_x_train, 
+                train_set=lgb.Dataset(cur_x_train,
                                       label=cur_y_train,
                                       categorical_feature=categorical_features),
-                valid_sets=[lgb.Dataset(cur_x_val, 
+                valid_sets=[lgb.Dataset(cur_x_val,
                                         label=cur_y_val,
                                         categorical_feature=categorical_features)],
                 num_boost_round=num_rounds,
@@ -89,26 +92,23 @@ def model_training(x_train: pd.DataFrame,
                 ]
             )
             preds = model.predict(cur_x_val)
-            fold_mae = mean_absolute_error(cur_y_val, preds)
-            fold_sign_acc = (np.sign(preds) == np.sign(cur_y_val.to_numpy())).mean()
-            maes_fold_agg.append(fold_mae)
-            sign_accs_fold_agg.append(fold_sign_acc)
 
             unique_stock_ids_in_fold = cur_x_val['stock_id'].unique()
             for stock_id_val in unique_stock_ids_in_fold:
-                stock_mask = (cur_x_val['stock_id'] == stock_id_val)
-                stock_preds = preds[stock_mask]
-                stock_y_val_numpy = cur_y_val[stock_mask].to_numpy()
-
-                stock_mae_fold_specific = mean_absolute_error(stock_y_val_numpy, stock_preds)
-                stock_sign_acc_fold_specific = (np.sign(stock_preds) == np.sign(stock_y_val_numpy)).mean()
-                
                 stock_code_val = id_to_stock_code(stock_id_val)
-                stock_maes_collect[stock_code_val].append(stock_mae_fold_specific)
-                stock_sign_accs_collect[stock_code_val].append(stock_sign_acc_fold_specific)
+                if stock_code_val in target_stock_list:
+                    stock_mask = (cur_x_val['stock_id'] == stock_id_val)
+                    stock_preds = preds[stock_mask]
+                    stock_y_val_numpy = cur_y_val[stock_mask].to_numpy()
 
-        avg_mae_overall = np.mean(maes_fold_agg)
-        avg_sign_acc_overall = np.mean(sign_accs_fold_agg)
+                    target_preds_all.extend(stock_preds)
+                    target_y_val_all.extend(stock_y_val_numpy)
+
+                    stock_mae_fold_specific = mean_absolute_error(stock_y_val_numpy, stock_preds)
+                    stock_sign_acc_fold_specific = (np.sign(stock_preds) == np.sign(stock_y_val_numpy)).mean()
+
+                    stock_maes_collect[stock_code_val].append(stock_mae_fold_specific)
+                    stock_sign_accs_collect[stock_code_val].append(stock_sign_acc_fold_specific)
 
         stock_maes_dict = {
             stock_code: np.mean(m_list) for stock_code, m_list in stock_maes_collect.items()
@@ -116,7 +116,10 @@ def model_training(x_train: pd.DataFrame,
         stock_sign_accs_dict = {
             stock_code: np.mean(sa_list) for stock_code, sa_list in stock_sign_accs_collect.items()
         }
-            
+
+        avg_mae_overall = mean_absolute_error(target_y_val_all, target_preds_all) if target_y_val_all else 0.0
+        avg_sign_acc_overall = (np.sign(target_preds_all) == np.sign(np.array(target_y_val_all))).mean() if target_y_val_all else 0.0
+
         return avg_mae_overall, avg_sign_acc_overall, stock_maes_dict, stock_sign_accs_dict
 
     if model_hyperparams is None:
@@ -126,7 +129,7 @@ def model_training(x_train: pd.DataFrame,
             sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
             pruner=optuna.pruners.MedianPruner(n_warmup_steps=2)
         )
-        study.optimize(objective, n_trials=settings.N_TRIALS, timeout=172800)
+        study.optimize(objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=1000000000)
         logger.info("Hyperparameter optimization completed")
 
         pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
@@ -134,8 +137,8 @@ def model_training(x_train: pd.DataFrame,
         best_params = best_trial.params.copy()
         best_mae = best_trial.values[0]
         best_sign_accuracy = best_trial.values[1]
-        best_stock_maes = best_trial.values[2]
-        best_stock_sign_accs = best_trial.values[3]
+        best_stock_maes = best_trial.user_attrs.get("stock_maes", {})
+        best_stock_sign_accs = best_trial.user_attrs.get("stock_sign_accs", {})
         
         best_params.update({
             'objective': 'regression_l1',
@@ -160,8 +163,6 @@ def model_training(x_train: pd.DataFrame,
         logger.info(f"Validation completed")
         logger.info(f"Validation Overall Metrics - MAE: {best_mae:.4f} | Sign Accuracy: {best_sign_accuracy*100:.2f}%")
     
-    logger.info(sorted(best_stock_sign_accs.items(), key=lambda item: item[1], reverse=True))
-    
     logger.info("Begin model training with optimized parameters")
     final_model = lgb.train(
         best_params,
@@ -174,19 +175,20 @@ def model_training(x_train: pd.DataFrame,
     )
     logger.info("Model training completed")
 
-    if optimize_target_stocks:
-        logger.info("Begin target stocks optimization")
-        logger.info(f"Using sign accuracy as the target stocks optimization metric with threshold {settings.SIGN_ACCURACY_THRESHOLD}")
-        target_stock_list = [
+    if optimize_predict_stocks:
+        logger.info("Begin predict stocks optimization")
+        logger.info(f"Using sign accuracy as the predict stocks optimization metric with threshold {settings.SIGN_ACCURACY_THRESHOLD}")
+        logger.info(f"Best stock sign accuracies: {best_stock_sign_accs}")
+        predict_stock_list = [
             stock_code
             for stock_code, sign_acc in best_stock_sign_accs.items()
-            if sign_acc > settings.SIGN_ACCURACY_THRESHOLD
+            if (stock_code in target_stock_list and sign_acc > settings.SIGN_ACCURACY_THRESHOLD)
         ]
     else:
-        logger.info("No target stocks optimization. Using all training stocks as target stocks")
-        target_stock_list = list(best_stock_sign_accs.keys())
+        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
+        predict_stock_list = target_stock_list
     if verbose:
-        logger.info(f"Target stocks: {', '.join(target_stock_list)}")
+        logger.info(f"Target stocks: {', '.join(predict_stock_list)}")
     
     importance = final_model.feature_importance(importance_type='gain')
     features = final_model.feature_name()
@@ -199,4 +201,4 @@ def model_training(x_train: pd.DataFrame,
             features_table.add_row([name, f"{imp:.2f}"], divider=True)
         logger.info(f'\n{features_table.get_string(title="Top features by gain")}')
     
-    return final_model, best_params, best_mae, best_sign_accuracy, sorted_feature_imp, target_stock_list
+    return final_model, best_params, best_mae, best_sign_accuracy, sorted_feature_imp, predict_stock_list

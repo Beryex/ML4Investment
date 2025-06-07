@@ -4,6 +4,7 @@ import logging
 import pandas_market_calendars as mcal
 from tqdm import tqdm
 from pathlib import Path
+from collections import defaultdict
 
 from ml4investment.config import settings
 
@@ -71,19 +72,30 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
         for stock in pbar:
             
             data_list = []
-            for year in range(earliest_year, latest_year + 1):
-                pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
-                year_str = str(year)
+            try:
                 file_name = f"{stock}.csv"
-                file_path = base_dir / year_str / file_name
-                
-                try:
-                    df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
-                except FileNotFoundError:
-                    tqdm.write(f"Data not found for {stock} in year {year}, skip it")
-                    continue
-                data_list.append(df_year)
+                file_path = base_dir / file_name
+                df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                data_list.append(df)
+            except FileNotFoundError:
+                tqdm.write(f"Data not found for {stock} directly in .csv format, search in year folders")
+                for year in range(earliest_year, latest_year + 1):
+                    pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
+                    year_str = str(year)
+                    file_name = f"{stock}.csv"
+                    file_path = base_dir / year_str / file_name
+                    
+                    try:
+                        df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                    except FileNotFoundError:
+                        tqdm.write(f"Data not found for {stock} in year {year}, skip it")
+                        continue
+                    data_list.append(df_year)
             
+            if len(data_list) == 0:
+                logger.warning(f"No data found for {stock} in local files")
+                continue
+
             data = pd.concat(data_list)
             data = data.between_time('09:30', '15:30')
             data.sort_index(inplace=True)
@@ -141,3 +153,29 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
     return merged, train_data
+
+
+def generate_stock_sectors_id_mapping(train_stock_list: list) -> dict:
+    """ Get target stocks across different sectors with minimum market cap """
+    info_list = []
+    with tqdm(train_stock_list, desc="Fetch stocks data") as pbar:
+        for stock in pbar:
+            pbar.set_postfix({'stock': stock,}, refresh=True)
+
+            stock_info = yf.Ticker(stock).info
+            sector = stock_info.get("sector", "Others")
+            market_cap = stock_info.get("marketCap", 0)
+            info_list.append({"symbol": stock, "sector": sector, "market_cap": market_cap})
+    
+    grouped_by_sector = defaultdict(list)
+    for stock_data in info_list:
+        grouped_by_sector[stock_data['sector']].append(stock_data)
+
+    stock_sectors_id_mapping = {}
+    for sector, stocks_in_sector in grouped_by_sector.items():
+        logger.info(f"\n--- Sector: {sector} ---")
+        sorted_stocks = sorted(stocks_in_sector, key=lambda x: x.get('market_cap', 0), reverse=True)
+        for stock in sorted_stocks:
+            stock_sectors_id_mapping[stock['symbol']] = settings.SECTOR_ID_MAP[sector]
+    
+    return stock_sectors_id_mapping

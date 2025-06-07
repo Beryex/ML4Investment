@@ -404,33 +404,60 @@ def calculate_features(df_dict: dict) -> dict:
             
             daily_dict[stock] = daily_df
 
-        # === Cross-Stock Feature: After All Stocks Are Done ===
-        all_data_panel = pd.concat(daily_dict, axis=1)
+    # === Cross-Stock Feature: After All Stocks Are Done ===
+    all_data_panel = pd.concat(daily_dict, axis=1)
+
+    all_returns = all_data_panel.loc[:, pd.IndexSlice[:, 'Return_1d']].droplevel(1, axis=1)
+    rank_return_1d = all_returns.rank(axis=1, pct=True)
     
-        all_returns = all_data_panel.loc[:, pd.IndexSlice[:, 'Return_1d']].droplevel(1, axis=1)
-        rank_return_1d = all_returns.rank(axis=1, pct=True)
+    features_to_rank = [
+        'Volatility_5d', 
+        'Volume_MA_ratio', 
+        'MA5_Deviation', 
+        'OC_Momentum', 
+        'Overnight_Gap_Daily',
+        'CMF_20d'
+    ]
+    ranks = {}
+    for feature in features_to_rank:
+        feature_data = all_data_panel.loc[:, pd.IndexSlice[:, feature]]
+        if not feature_data.empty:
+            feature_data = feature_data.droplevel(1, axis=1)
+            ranks[f'Rank_{feature}'] = feature_data.rank(axis=1, pct=True)
+
+    for stock in daily_dict.keys():
+        daily_dict[stock]['Relative_Return_Rank'] = rank_return_1d[stock]
+        for rank_name, rank_df in ranks.items():
+            daily_dict[stock][rank_name] = rank_df[stock]
         
-        features_to_rank = [
-            'Volatility_5d', 
-            'Volume_MA_ratio', 
-            'MA5_Deviation', 
-            'OC_Momentum', 
-            'Overnight_Gap_Daily',
-            'CMF_20d'
-        ]
-        ranks = {}
-        for feature in features_to_rank:
-            feature_data = all_data_panel.loc[:, pd.IndexSlice[:, feature]]
-            if not feature_data.empty:
-                feature_data = feature_data.droplevel(1, axis=1)
-                ranks[f'Rank_{feature}'] = feature_data.rank(axis=1, pct=True)
+    # === Embed ETF Features into other stocks ===
+    etf_list = [stock for stock in  df_dict.keys() if settings.STOCK_SECTOR_ID_MAP[stock] == 12]    # Sector ID 12 means Other, that is ETF
+    features_to_embed_from_etfs = [
+        'Return_1d', 'Return_5d', 'Volatility_5d', 'RSI_14d',
+        'MACD_hist_daily', 'Volume_MA_ratio', 'ADX_14d', 'CMF_20d'
+    ]
 
-        for stock in daily_dict.keys():
-            daily_dict[stock]['Relative_Return_Rank'] = rank_return_1d[stock]
-            for rank_name, rank_df in ranks.items():
-                daily_dict[stock][rank_name] = rank_df[stock]
+    prepared_etf_data_for_embedding = {}
+    for etf in etf_list:
+        etf_daily_df = daily_dict[etf].copy()
+        etf_features_subset = etf_daily_df[features_to_embed_from_etfs].copy()
+        etf_features_subset.columns = [f"{etf}_{col_name}" for col_name in etf_features_subset.columns]
+        prepared_etf_data_for_embedding[etf] = etf_features_subset
 
-        return daily_dict
+    for stock in daily_dict.keys():
+        stock_df = daily_dict[stock]
+
+        for etf, etf_df in prepared_etf_data_for_embedding.items():
+            stock_df = pd.merge(stock_df, etf_df,
+                                left_index=True, right_index=True,
+                                how='left')
+
+        daily_dict[stock] = stock_df
+    
+    for etf in etf_list:
+        del daily_dict[etf]  # Remove ETF from the final output
+
+    return daily_dict
 
 
 def _calculate_MACD(series: pd.DataFrame) -> pd.Series:

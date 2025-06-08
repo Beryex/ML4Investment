@@ -25,8 +25,9 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
     set_random_seed(seed)
 
     backtest_data = {}
+    train_data_start_date = settings.TRAINING_DATA_START_DATE
     for stock in train_stock_list:
-        backtest_data[stock] = fetched_data[stock].tail((settings.CALCULATING_FEATURE_DAYS + settings.TEST_DAY_NUMBER) * settings.DATA_PER_DAY)
+        backtest_data[stock] = fetched_data[stock].loc[train_data_start_date:]
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(backtest_data)

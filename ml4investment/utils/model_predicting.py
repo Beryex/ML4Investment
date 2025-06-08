@@ -35,6 +35,6 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
         logger.error(f"Prediction failed: {str(e)}")
         raise RuntimeError("Prediction error occurred") from e
     
-    prediction = round(float(y_pred[0]), 4)
+    prediction = float(y_pred[0])
     
     return prediction

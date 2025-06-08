@@ -666,9 +666,11 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
             boolean_cols = X_train_dropna.select_dtypes(include='bool').columns.tolist()
             numerical_cols = [col for col in X_train_dropna.columns if col not in boolean_cols]
 
-            quantiles = X_train_dropna[numerical_cols].quantile([0.05, 0.95])
-            lower_bound = quantiles.xs(0.05)
-            upper_bound = quantiles.xs(0.95)
+            lower_ratio = settings.CLIP_LOWER_QUANTILE_RATIO
+            upper_ratio = settings.CLIP_UPPER_QUANTILE_RATIO
+            quantiles = X_train_dropna[numerical_cols].quantile([lower_ratio, upper_ratio])
+            lower_bound = quantiles.xs(lower_ratio)
+            upper_bound = quantiles.xs(upper_ratio)
 
             X_train_clipped = X_train_dropna.copy()
 

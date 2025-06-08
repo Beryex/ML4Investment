@@ -29,6 +29,8 @@ STOCK_SECTOR_ID_MAP = {'MSFT': 1, 'NVDA': 1, 'AAPL': 1, 'AVGO': 1, 'TSM': 1, 'OR
                        'NEE': 9, 
                        'LIN': 11, 'APD': 11, 'FCX': 11, 'DOW': 11, 'CLF': 11,
                        'SPY': 12, 'QQQ': 12, 'VUG': 12, 'EFA': 12, 'GLD': 12, 'VTV': 12, 'DIA': 12, 'KWEB': 12}
+CLIP_LOWER_QUANTILE_RATIO = 0.05
+CLIP_UPPER_QUANTILE_RATIO = 0.95
 
 # Model Training
 TRAINING_DATA_START_DATE = '2016-01-01'
@@ -41,5 +43,4 @@ SIGN_ACCURACY_THRESHOLD = 0.60
 
 # Evaluation
 TEST_DAY_NUMBER = 84
-CALCULATING_FEATURE_DAYS = 60
 NUMBER_OF_STOCKS_TO_BUY = 3

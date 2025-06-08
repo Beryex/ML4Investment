@@ -1,0 +1,12 @@
+{
+    "predict_stocks": [
+        "MSFT", "NVDA", "AVGO", "TSM", "ORCL", "PLTR", "TXN", "INTC", "AMD",
+        "LLY", "JNJ",
+        "JPM",
+        "COST", "KO",
+        "AMZN", "TSLA", "BABA", "NKE", "LULU", "SBUX",
+        "GE", "RTX", "LMT",
+        "XOM", 
+        "GOOGL"
+    ]
+}

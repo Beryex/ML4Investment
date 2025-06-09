@@ -177,18 +177,12 @@ def model_training(x_train: pd.DataFrame,
 
     if optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
-        logger.info(f"Using sign accuracy as the predict stocks optimization metric with threshold {settings.SIGN_ACCURACY_THRESHOLD}")
-        logger.info(f"Best stock sign accuracies: {best_stock_sign_accs}")
-        predict_stock_list = [
-            stock_code
-            for stock_code, sign_acc in best_stock_sign_accs.items()
-            if (stock_code in target_stock_list and sign_acc > settings.SIGN_ACCURACY_THRESHOLD)
-        ]
+        logger.info(f"Using sign accuracy as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
+        best_stock_sign_accs = sorted(best_stock_sign_accs.items(), key=lambda item: item[1], reverse=True)
+        predict_stock_list = [stock for stock, acc in best_stock_sign_accs[:settings.PREDICT_STOCK_NUMBER]]
     else:
         logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
         predict_stock_list = target_stock_list
-    if verbose:
-        logger.info(f"Target stocks: {', '.join(predict_stock_list)}")
     
     importance = final_model.feature_importance(importance_type='gain')
     features = final_model.feature_name()

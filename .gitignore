@@ -177,6 +177,5 @@ cython_debug/
 .DS_Store
 
 # custom
-ml4investment/config/predict_stocks.json
 *.pkl
 *.model

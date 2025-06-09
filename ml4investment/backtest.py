@@ -25,8 +25,9 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
     set_random_seed(seed)
 
     backtest_data = {}
+    train_data_start_date = settings.TRAINING_DATA_START_DATE
     for stock in train_stock_list:
-        backtest_data[stock] = fetched_data[stock].tail((settings.CALCULATING_FEATURE_DAYS + settings.TEST_DAY_NUMBER) * settings.DATA_PER_DAY)
+        backtest_data[stock] = fetched_data[stock].loc[train_data_start_date:]
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(backtest_data)
@@ -72,7 +73,8 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
         "Actual daily gain", 
         "Optimal daily gain", 
         "Predict optimal stock to buy",
-        "Actual optimal stock to buy"
+        "Actual optimal stock to buy",
+        "Overall Actual Gain"
     ]
     gain_predict = 1
     gain_actual = 1
@@ -105,10 +107,11 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
             f"{daily_gain_actual:+.2%}",
             f"{daily_gain_optimal:+.2%}", 
             cur_optimal_stocks_with_sector,
-            cur_actual_optimal_stocks_with_sector
+            cur_actual_optimal_stocks_with_sector,
+            f"{gain_actual:+.2%}"
         ]
         results_table.add_row(row, divider=True)
-    results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A"], divider=True)
+    results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A", "N/A"], divider=True)
     if args.verbose:
         logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
 

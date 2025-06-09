@@ -23,8 +23,9 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     set_random_seed(seed)
 
     predict_data = {}
+    train_data_start_date = settings.TRAINING_DATA_START_DATE
     for stock in train_stock_list:
-        predict_data[stock] = fetched_data[stock].tail((settings.CALCULATING_FEATURE_DAYS + 1) * settings.DATA_PER_DAY)
+        predict_data[stock] = fetched_data[stock].loc[train_data_start_date:]
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(predict_data)

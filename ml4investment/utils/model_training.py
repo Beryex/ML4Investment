@@ -58,19 +58,17 @@ def model_training(x_train: pd.DataFrame,
             'deterministic': True
         }
         
-        avg_mae, avg_sign_accuracy, avg_stock_maes, avg_stock_sign_accs = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2400))
+        avg_mae, avg_sign_accuracy, stock_avg_actual_gain_dict = cross_validate(params, num_rounds=trial.suggest_int('num_rounds', 800, 2400))
         
-        trial.set_user_attr("stock_maes", avg_stock_maes)
-        trial.set_user_attr("stock_sign_accs", avg_stock_sign_accs)
+        trial.set_user_attr("stock_avg_actual_gain_dict", stock_avg_actual_gain_dict)
         
         return avg_mae, avg_sign_accuracy
     
-    def cross_validate(params: dict, num_rounds: int) -> tuple[float, float, dict, dict]:
+    def cross_validate(params: dict, num_rounds: int) -> tuple[float, float, dict]:
         tscv = TimeSeriesSplit(n_splits=settings.N_SPLIT)
         target_preds_all = []
         target_y_val_all = []
-        stock_maes_collect = defaultdict(list)
-        stock_sign_accs_collect = defaultdict(list)
+        stock_actual_gains_collect = defaultdict(lambda: {'total_gain': 1.0, 'sample_count': 0})
 
         for fold, (train_idx, valid_idx) in enumerate(tscv.split(x_train)):
             cur_x_train, cur_x_val = x_train.iloc[train_idx], x_train.iloc[valid_idx]
@@ -104,23 +102,22 @@ def model_training(x_train: pd.DataFrame,
                     target_preds_all.extend(stock_preds)
                     target_y_val_all.extend(stock_y_val_numpy)
 
-                    stock_mae_fold_specific = mean_absolute_error(stock_y_val_numpy, stock_preds)
-                    stock_sign_acc_fold_specific = (np.sign(stock_preds) == np.sign(stock_y_val_numpy)).mean()
+                    positive_pred_mask = stock_preds > 0
+                    factors_to_multiply = 1 + stock_y_val_numpy[positive_pred_mask]
+                    current_fold_total_gain = np.prod(factors_to_multiply)
+                    
+                    stock_actual_gains_collect[stock_code_val]['total_gain'] *= current_fold_total_gain
+                    stock_actual_gains_collect[stock_code_val]['sample_count'] += len(stock_preds)
 
-                    stock_maes_collect[stock_code_val].append(stock_mae_fold_specific)
-                    stock_sign_accs_collect[stock_code_val].append(stock_sign_acc_fold_specific)
-
-        stock_maes_dict = {
-            stock_code: np.mean(m_list) for stock_code, m_list in stock_maes_collect.items()
-        }
-        stock_sign_accs_dict = {
-            stock_code: np.mean(sa_list) for stock_code, sa_list in stock_sign_accs_collect.items()
+        stock_avg_actual_gain_dict = {
+            stock_code: data['total_gain'] ** (1 / data['sample_count'])
+            for stock_code, data in stock_actual_gains_collect.items()
         }
 
         avg_mae_overall = mean_absolute_error(target_y_val_all, target_preds_all) if target_y_val_all else 0.0
         avg_sign_acc_overall = (np.sign(target_preds_all) == np.sign(np.array(target_y_val_all))).mean() if target_y_val_all else 0.0
 
-        return avg_mae_overall, avg_sign_acc_overall, stock_maes_dict, stock_sign_accs_dict
+        return avg_mae_overall, avg_sign_acc_overall, stock_avg_actual_gain_dict
 
     if model_hyperparams is None:
         logger.info("Begin hyperparameter optimization")
@@ -137,8 +134,7 @@ def model_training(x_train: pd.DataFrame,
         best_params = best_trial.params.copy()
         best_mae = best_trial.values[0]
         best_sign_accuracy = best_trial.values[1]
-        best_stock_maes = best_trial.user_attrs.get("stock_maes", {})
-        best_stock_sign_accs = best_trial.user_attrs.get("stock_sign_accs", {})
+        best_stock_avg_actual_gain_dict = best_trial.user_attrs.get("stock_avg_actual_gain_dict", {})
         
         best_params.update({
             'objective': 'regression_l1',
@@ -159,7 +155,7 @@ def model_training(x_train: pd.DataFrame,
     else:
         best_params = model_hyperparams.copy()
         logger.info(f"Begin validation with provided hyperparameters")
-        best_mae, best_sign_accuracy, best_stock_maes, best_stock_sign_accs = cross_validate(best_params, num_rounds=best_params['num_rounds'])
+        best_mae, best_sign_accuracy, best_stock_avg_actual_gain_dict = cross_validate(best_params, num_rounds=best_params['num_rounds'])
         logger.info(f"Validation completed")
         logger.info(f"Validation Overall Metrics - MAE: {best_mae:.4f} | Sign Accuracy: {best_sign_accuracy*100:.2f}%")
     
@@ -177,9 +173,11 @@ def model_training(x_train: pd.DataFrame,
 
     if optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
-        logger.info(f"Using sign accuracy as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
-        best_stock_sign_accs = sorted(best_stock_sign_accs.items(), key=lambda item: item[1], reverse=True)
-        predict_stock_list = [stock for stock, acc in best_stock_sign_accs[:settings.PREDICT_STOCK_NUMBER]]
+        logger.info(f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
+        best_stock_avg_actual_gain_dict = sorted(best_stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
+        if verbose:
+            logger.info(f"Best stock average actual gain dictionary: {best_stock_avg_actual_gain_dict}")
+        predict_stock_list = [stock for stock, _ in best_stock_avg_actual_gain_dict[:settings.PREDICT_STOCK_NUMBER]]
     else:
         logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
         predict_stock_list = target_stock_list

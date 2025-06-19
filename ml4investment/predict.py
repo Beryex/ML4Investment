@@ -29,10 +29,16 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(predict_data)
+
+    # Extract the close price here for the prediction needs
+    stock_close_prices = {}
+    for stock in predict_stock_list:
+        newest_date = daily_features_data[stock].index[-1]
+        close_price = daily_features_data[stock].loc[newest_date]['Close_last']
+        stock_close_prices[stock] = close_price
     
     X_predict_dict = process_features_for_predict(daily_features_data, process_feature_config)
 
-    
     for stock, data in X_predict_dict.items():
         X_predict_dict[stock] = data[selected_features]
     
@@ -57,8 +63,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     
     if args.verbose:
         results_table = PrettyTable()
-        field_names = ["Stock"]
-        field_names.append("Open_Price_Change_Predict")
+        field_names = ["Stock", "Open Price Change Predict"]
         results_table.field_names = field_names
         for stock in sorted(predictions, key=predictions.get, reverse=True):
             row = [stock, f"{predictions[stock]:+.2%}"]
@@ -73,13 +78,34 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
         logger.info("No stocks were recommended today (no positive predicted returns).")
         return
     else:
+        predict_table = PrettyTable()
+        field_names = [
+            "Stock", 
+            "Open Price Change Predict", 
+            "Recommended Weight", 
+            "Recommended Investment Value", 
+            "Close Price", 
+            "Recommended Buy in number"
+        ]
+        predict_table.field_names = field_names
         predicted_returns = [value for _, value in top_stocks]
         total_pred = sum(predicted_returns)
         weights = [ret / total_pred for ret in predicted_returns]
 
-        logger.info(f"Suggested top {actual_number_selected} stocks to buy:")
+        logger.info(f"Give recommendation based on total investment value: ${settings.TOTAL_BALANCE}")
         for (stock, pred), weight in zip(top_stocks, weights):
-            logger.info(f"  - {stock:>6} | predicted change: {pred:+.2%} | recommended weight: {weight:.2%}")
+            recommended_investment_value = settings.TOTAL_BALANCE * weight
+            recommended_buy_in_number = round(recommended_investment_value / stock_close_prices[stock])
+            row = [
+                stock, 
+                f"{pred:+.2%}", 
+                f"{weight:.2%}", 
+                f"${recommended_investment_value:.2f}", 
+                f"${stock_close_prices[stock]:.2f}", 
+                recommended_buy_in_number
+            ]
+            predict_table.add_row(row, divider=True)
+        logger.info(f'\n{predict_table.get_string(title=f"Suggested top {actual_number_selected} stocks to buy:")}')
 
     logger.info("Prediction process completed.")
 

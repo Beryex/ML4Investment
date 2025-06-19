@@ -129,8 +129,8 @@ def model_training(x_train: pd.DataFrame,
         study.optimize(objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=1000000000)
         logger.info("Hyperparameter optimization completed")
 
-        pareto_trials = [t for t in study.best_trials if t.values[0] < settings.MAE_THRESHOLD]
-        best_trial = max(pareto_trials, key=lambda t: t.values[1])
+        pareto_trials = [t for t in study.best_trials if t.values[1] > settings.SIGN_ACC_THRESHOLD]
+        best_trial = min(pareto_trials, key=lambda t: t.values[0])
         best_params = best_trial.params.copy()
         best_mae = best_trial.values[0]
         best_sign_accuracy = best_trial.values[1]
@@ -175,8 +175,6 @@ def model_training(x_train: pd.DataFrame,
         logger.info("Begin predict stocks optimization")
         logger.info(f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
         best_stock_avg_actual_gain_dict = sorted(best_stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
-        if verbose:
-            logger.info(f"Best stock average actual gain dictionary: {best_stock_avg_actual_gain_dict}")
         predict_stock_list = [stock for stock, _ in best_stock_avg_actual_gain_dict[:settings.PREDICT_STOCK_NUMBER]]
     else:
         logger.info("No predict stocks optimization. Using all target stocks as predict stocks")

@@ -105,7 +105,7 @@ def train(train_stock_list: list,
                 verbose=args.verbose
             )
             
-            if sign_accuracy_tmp >= optimal_sign_accuracy:
+            if mae_tmp <= optimal_mae:
                 logger.info(f"Removing '{feature_to_remove}' improved or kept performance.")
                 optimal_mae = mae_tmp
                 optimal_sign_accuracy = sign_accuracy_tmp

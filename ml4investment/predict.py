@@ -60,15 +60,6 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     for stock in predict_stock_list:
         today_pred = model_predict(model, X_predict_dict[stock])
         predictions[stock] = today_pred
-    
-    if args.verbose:
-        results_table = PrettyTable()
-        field_names = ["Stock", "Open Price Change Predict"]
-        results_table.field_names = field_names
-        for stock in sorted(predictions, key=predictions.get, reverse=True):
-            row = [stock, f"{predictions[stock]:+.2%}"]
-            results_table.add_row(row, divider=True)
-        logger.info(f'\n{results_table.get_string(title="Predict price changes for stocks")}')
 
     sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
     top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
@@ -79,7 +70,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
         return
     else:
         predict_table = PrettyTable()
-        field_names = [
+        predict_table.field_names = [
             "Stock", 
             "Open Price Change Predict", 
             "Recommended Weight", 
@@ -87,7 +78,6 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
             "Close Price", 
             "Recommended Buy in number"
         ]
-        predict_table.field_names = field_names
         predicted_returns = [value for _, value in top_stocks]
         total_pred = sum(predicted_returns)
         weights = [ret / total_pred for ret in predicted_returns]
@@ -105,6 +95,14 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
                 recommended_buy_in_number
             ]
             predict_table.add_row(row, divider=True)
+        
+        if args.verbose:
+            for stock, pred in sorted_stock_gain_prediction:
+                if stock in top_stocks:
+                    continue
+                row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
+                predict_table.add_row(row, divider=True)
+        
         logger.info(f'\n{predict_table.get_string(title=f"Suggested top {actual_number_selected} stocks to buy:")}')
 
     logger.info("Prediction process completed.")

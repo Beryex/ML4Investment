@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import logging
 
+from ml4investment.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,3 +40,20 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     prediction = float(y_pred[0])
     
     return prediction
+
+
+def get_predict_top_stocks_and_weights(sorted_stock_gain_prediction: list) -> list:
+    """ Get the top stocks and their recommended weights for investment """
+    top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
+    actual_number_selected = len(top_stocks)
+
+    if actual_number_selected == 0:
+        return []
+
+    predicted_returns = [value for _, value in top_stocks]
+    total_pred = sum(predicted_returns)
+    weights = [ret / total_pred for ret in predicted_returns]
+
+    predict_top_stock_and_weights_list = [(stock, weight) for (stock, _), weight in zip(top_stocks, weights)]
+
+    return predict_top_stock_and_weights_list

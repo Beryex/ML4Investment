@@ -9,10 +9,11 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 from ml4investment.config import settings
-from ml4investment.utils.utils import set_random_seed, update_backtest_gains
+from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_backtest
 from ml4investment.utils.model_predicting import model_predict
+from ml4investment.utils.model_backtesting import update_backtest_gains
 
 configure_logging(env="backtest", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")

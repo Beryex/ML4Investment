@@ -10,7 +10,7 @@ from ml4investment.config import settings
 from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_predict
-from ml4investment.utils.model_predicting import model_predict
+from ml4investment.utils.model_predicting import model_predict, get_predict_top_stocks_and_weights
 
 configure_logging(env="predict", file_name="predict.log")
 logger = logging.getLogger("ml4investment.predict")
@@ -58,37 +58,32 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     
     predictions = {}
     for stock in predict_stock_list:
-        today_pred = model_predict(model, X_predict_dict[stock])
-        predictions[stock] = today_pred
+        predictions[stock] = model_predict(model, X_predict_dict[stock])
+
+    predict_table = PrettyTable()
+    predict_table.field_names = [
+        "Stock", 
+        "Open Price Change Predict", 
+        "Recommended Weight", 
+        "Recommended Investment Value", 
+        "Close Price", 
+        "Recommended Buy in number"
+    ]
 
     sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
-    top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
-    actual_number_selected = len(top_stocks)
+    predict_top_stock_and_weights_list = get_predict_top_stocks_and_weights(sorted_stock_gain_prediction)
+    actual_number_selected = len(predict_top_stock_and_weights_list)
 
     if actual_number_selected == 0:
         logger.info("No stocks were recommended today (no positive predicted returns).")
-        return
     else:
-        predict_table = PrettyTable()
-        predict_table.field_names = [
-            "Stock", 
-            "Open Price Change Predict", 
-            "Recommended Weight", 
-            "Recommended Investment Value", 
-            "Close Price", 
-            "Recommended Buy in number"
-        ]
-        predicted_returns = [value for _, value in top_stocks]
-        total_pred = sum(predicted_returns)
-        weights = [ret / total_pred for ret in predicted_returns]
-
         logger.info(f"Give recommendation based on total investment value: ${settings.TOTAL_BALANCE}")
-        for (stock, pred), weight in zip(top_stocks, weights):
+        for (stock, weight) in predict_top_stock_and_weights_list:
             recommended_investment_value = settings.TOTAL_BALANCE * weight
             recommended_buy_in_number = round(recommended_investment_value / stock_close_prices[stock])
             row = [
                 stock, 
-                f"{pred:+.2%}", 
+                f"{predictions[stock]:+.2%}", 
                 f"{weight:.2%}", 
                 f"${recommended_investment_value:.2f}", 
                 f"${stock_close_prices[stock]:.2f}", 
@@ -96,13 +91,12 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
             ]
             predict_table.add_row(row, divider=True)
         
-        if args.verbose:
-            for stock, pred in sorted_stock_gain_prediction:
-                if stock in top_stocks:
-                    continue
-                row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
-                predict_table.add_row(row, divider=True)
-        
+    if args.verbose:
+        for stock, pred in sorted_stock_gain_prediction[actual_number_selected:]:
+            row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
+            predict_table.add_row(row, divider=True)
+    
+    if args.verbose or actual_number_selected > 0:
         logger.info(f'\n{predict_table.get_string(title=f"Suggested top {actual_number_selected} stocks to buy:")}')
 
     logger.info("Prediction process completed.")

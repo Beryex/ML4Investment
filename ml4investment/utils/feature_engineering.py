@@ -622,10 +622,19 @@ def _calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod
     return adx
 
 
-def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+def process_features_for_train_and_validate(daily_dict: dict, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """ Process Data, including washing, removing Nan, scaling and spliting for training purpose """
     process_feature_config = {}
     X_train_list, y_train_list = [], []
+    X_validate_list, y_validate_list = [], []
+
+    train_start = pd.to_datetime(settings.TRAINING_DATA_START_DATE).tz_localize('America/New_York')
+    train_end = pd.to_datetime(settings.TRAINING_DATA_END_DATE).tz_localize('America/New_York')
+    val_start = pd.to_datetime(settings.VALIDATION_DATA_START_DATE).tz_localize('America/New_York')
+    val_end = pd.to_datetime(settings.VALIDATION_DATA_END_DATE).tz_localize('America/New_York')
+
+    logger.info(f"Using data from {train_start} to {train_end} for training.")
+    logger.info(f"Using data from {val_start} to {val_end} for validation.")
 
     for stock, df in daily_dict.items():
         daily_dict[stock] = df.dropna(subset=['Target'])
@@ -655,8 +664,12 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
 
             feature_cols = [col for col in df.columns if col != 'Target']
             target_col = 'Target'
-            X_train_stock = df[feature_cols]
-            y_train_stock = df[target_col]
+
+            # Process training data
+            df_train = df[(df.index >= train_start) & (df.index <= train_end)]
+
+            X_train_stock = df_train[feature_cols]
+            y_train_stock = df_train[target_col]
 
             # only train data has NAN caused by lookingback
             X_train_dropna = X_train_stock.dropna()
@@ -702,64 +715,45 @@ def process_features_for_train(daily_dict: dict, test_number: int = 63, seed: in
                 'scaler': scaler
             }
 
+            # Process validation data
+            df_validate = df[(df.index >= val_start) & (df.index <= val_end)]
+
+            X_validate_stock = df_validate[feature_cols]
+            y_validate_stock = df_validate[target_col]
+
+            X_validate_dropna = X_validate_stock.dropna()
+            y_validate_stock = y_validate_stock.loc[X_validate_dropna.index]
+            assert X_validate_dropna.isnull().sum().sum() == 0, f"Validation data contains missing values for stock {stock}"
+
+            X_validate_clipped = X_validate_dropna.copy()
+            X_validate_clipped[numerical_cols] = X_validate_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
+            X_validate_scaled_numerical = pd.DataFrame(
+                scaler.transform(X_validate_clipped[numerical_cols]),
+                columns=numerical_cols,
+                index=X_validate_clipped.index
+            )
+
+            X_validate_scaled = pd.concat([X_validate_scaled_numerical, X_validate_clipped[boolean_cols]], axis=1)
+
+            stock_id = stock_id_map[stock]
+            X_validate_scaled['stock_id'] = stock_id
+            X_validate_scaled['stock_id'] = X_validate_scaled['stock_id'].astype(cat_stock_id_type)
+
+            sector_id = stock_sector_id_map[stock]
+            X_validate_scaled['stock_sector'] = sector_id
+            X_validate_scaled['stock_sector'] = X_validate_scaled['stock_sector'].astype(cat_sector_id_type)
+
+            X_validate_list.append(X_validate_scaled)
+            y_validate_list.append(y_validate_stock)
+
     X_train = pd.concat(X_train_list)
     y_train = pd.concat(y_train_list)
+    X_validate = pd.concat(X_validate_list)
+    y_validate = pd.concat(y_validate_list)
 
     X_train, y_train = shuffle(X_train, y_train, random_state=seed)
 
-    return X_train, y_train, process_feature_config
-
-
-def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
-    """ Process Data, including washing, removing Nan, scaling and spliting for prediction purpose """
-    X_predict_dict = {}
-
-    stock_id_map = config_data['stock_id_map']
-    cat_stock_id_type = config_data['cat_stock_id_type']
-    stock_sector_id_map = config_data['stock_sector_id_map']
-    cat_sector_id_type = config_data['cat_sector_id_type']
-
-    with tqdm(daily_dict.items(), desc="Process features for predict") as pbar:
-        for stock, df in pbar:
-            cur_config_data = config_data[stock]
-            lower_bound = cur_config_data['lower_bound']
-            upper_bound = cur_config_data['upper_bound']
-            scaler = cur_config_data['scaler']
-
-            feature_cols = [col for col in df.columns if col != 'Target']
-            X_predict_stock = df[feature_cols]
-
-            X_predict_dropna = X_predict_stock.dropna()
-            
-            assert X_predict_dropna.isnull().sum().sum() == 0, f"Prediction data contains missing values for stock {stock}"
-
-            boolean_cols = X_predict_dropna.select_dtypes(include='bool').columns.tolist()
-            numerical_cols = [col for col in X_predict_dropna.columns if col not in boolean_cols]
-
-            X_predict_clipped = X_predict_dropna.copy()
-
-            X_predict_clipped[numerical_cols] = X_predict_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
-
-            X_predict_scaled_numerical = pd.DataFrame(
-                scaler.transform(X_predict_clipped[numerical_cols]),
-                columns=numerical_cols,
-                index=X_predict_clipped.index
-            )
-
-            X_predict_scaled = pd.concat([X_predict_scaled_numerical, X_predict_clipped[boolean_cols]], axis=1)
-
-            stock_id = stock_id_map[stock]
-            X_predict_scaled['stock_id'] = stock_id
-            X_predict_scaled['stock_id'] = X_predict_scaled['stock_id'].astype(cat_stock_id_type)
-
-            sector_id = stock_sector_id_map[stock]
-            X_predict_scaled['stock_sector'] = sector_id
-            X_predict_scaled['stock_sector'] = X_predict_scaled['stock_sector'].astype(cat_sector_id_type)
-
-            X_predict = X_predict_scaled.iloc[[-1]].copy()
-            X_predict_dict[stock] = X_predict
-
-    return X_predict_dict
+    return X_train, y_train, X_validate, y_validate, process_feature_config
 
 
 def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_stock_list: list) -> tuple[dict, dict, int]:
@@ -773,10 +767,19 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
     cat_sector_id_type = config_data['cat_sector_id_type']
     
     for stock, df in daily_dict.items():
+        df = df.copy()
         daily_dict[stock] = df.dropna(subset=['Target'])
     
+    test_start = pd.to_datetime(settings.TESTING_DATA_START_DATE).tz_localize('America/New_York')
+    if settings.TESTING_DATA_END_DATE is None:
+        test_end = pd.Timestamp.now(tz='America/New_York')
+    else:
+        test_end = pd.to_datetime(settings.TESTING_DATA_END_DATE).tz_localize('America/New_York')
+    logger.info(f"Using data from {test_start} to {test_end} for training.")
+
     for stock in daily_dict.keys():
-        daily_dict[stock] = daily_dict[stock].tail(settings.TEST_DAY_NUMBER)
+        cur_stock_df = daily_dict[stock]
+        daily_dict[stock] = cur_stock_df[(cur_stock_df.index >= test_start) & (cur_stock_df.index <= test_end)]
 
     backtest_day_numbers = {df.shape[0] for df in daily_dict.values()}
     if len(backtest_day_numbers) != 1:
@@ -835,3 +838,56 @@ def process_features_for_backtest(daily_dict: dict, config_data: dict, predict_s
                 y_backtest_dict[i][stock] = y_backtest_stock.iloc[i]
 
     return X_backtest_dict, y_backtest_dict, backtest_day_number
+
+
+def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
+    """ Process Data, including washing, removing Nan, scaling and spliting for prediction purpose """
+    X_predict_dict = {}
+
+    stock_id_map = config_data['stock_id_map']
+    cat_stock_id_type = config_data['cat_stock_id_type']
+    stock_sector_id_map = config_data['stock_sector_id_map']
+    cat_sector_id_type = config_data['cat_sector_id_type']
+
+    with tqdm(daily_dict.items(), desc="Process features for predict") as pbar:
+        for stock, df in pbar:
+            X_predict_stock = df.iloc[[-1]].copy()
+
+            cur_config_data = config_data[stock]
+            lower_bound = cur_config_data['lower_bound']
+            upper_bound = cur_config_data['upper_bound']
+            scaler = cur_config_data['scaler']
+
+            feature_cols = [col for col in df.columns if col != 'Target']
+            X_predict_stock = X_predict_stock[feature_cols]
+
+            X_predict_dropna = X_predict_stock.dropna()
+            
+            assert X_predict_dropna.isnull().sum().sum() == 0, f"Prediction data contains missing values for stock {stock}"
+
+            boolean_cols = X_predict_dropna.select_dtypes(include='bool').columns.tolist()
+            numerical_cols = [col for col in X_predict_dropna.columns if col not in boolean_cols]
+
+            X_predict_clipped = X_predict_dropna.copy()
+
+            X_predict_clipped[numerical_cols] = X_predict_dropna[numerical_cols].clip(lower_bound, upper_bound, axis=1)
+
+            X_predict_scaled_numerical = pd.DataFrame(
+                scaler.transform(X_predict_clipped[numerical_cols]),
+                columns=numerical_cols,
+                index=X_predict_clipped.index
+            )
+
+            X_predict_scaled = pd.concat([X_predict_scaled_numerical, X_predict_clipped[boolean_cols]], axis=1)
+
+            stock_id = stock_id_map[stock]
+            X_predict_scaled['stock_id'] = stock_id
+            X_predict_scaled['stock_id'] = X_predict_scaled['stock_id'].astype(cat_stock_id_type)
+
+            sector_id = stock_sector_id_map[stock]
+            X_predict_scaled['stock_sector'] = sector_id
+            X_predict_scaled['stock_sector'] = X_predict_scaled['stock_sector'].astype(cat_sector_id_type)
+
+            X_predict_dict[stock] = X_predict_scaled
+
+    return X_predict_dict

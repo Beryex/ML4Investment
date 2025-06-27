@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = False) -> pd.DataFrame:
     """ Fetch trading day data for a given stock for the last given days with given interval from yfinance """
-    logger.info(f"Fetching data from yfinance for {stocks}")
+    logger.info(f"Fetching data from yfinance")
     fetched_data = {}
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:
@@ -53,7 +53,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
 
 def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
     """ Load the local data for the given srocks """
-    logger.info(f"Loading local data for {stocks}")
+    logger.info(f"Loading local data")
     fetched_data = {}
 
     base_dir = Path(base_dir)

@@ -9,10 +9,11 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 from ml4investment.config import settings
-from ml4investment.utils.utils import set_random_seed, update_backtest_gains
+from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_backtest
 from ml4investment.utils.model_predicting import model_predict
+from ml4investment.utils.model_backtesting import update_backtest_gains
 
 configure_logging(env="backtest", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
@@ -66,8 +67,8 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
         for stock in predict_stock_list:
             y_predict_dict[i][stock] = model_predict(model, X_backtest_dict[i][stock])
 
-    results_table = PrettyTable()
-    results_table.field_names = [
+    detailed_backtest_table = PrettyTable()
+    detailed_backtest_table.field_names = [
         "Day", 
         "Predict daily gain", 
         "Actual daily gain", 
@@ -110,12 +111,23 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
             cur_actual_optimal_stocks_with_sector,
             f"{gain_actual:+.2%}"
         ]
-        results_table.add_row(row, divider=True)
-    results_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A", "N/A"], divider=True)
-    if args.verbose:
-        logger.info(f'\n{results_table.get_string(title=f"Backtest price changes for stocks")}')
+        detailed_backtest_table.add_row(row, divider=True)
+    detailed_backtest_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A", "N/A"], divider=True)
 
-    logger.info(f"Backtesting for last {backtest_day_number} days: Predict overall gain {gain_predict:+.2%}, Actual overall gain: {gain_actual:+.2%}, Optimal overall gain: {gain_optimal:+.2%}, Efficiency: {(gain_actual/gain_optimal):.2%}")
+    backtest_table = PrettyTable()
+    backtest_table.field_names = [
+        "Backtest Trading Day Number", 
+        "Predict overall gain", 
+        "Actual overall gain", 
+        "Optimal overall gain", 
+        "Efficiency"
+    ]
+    backtest_table.add_row([backtest_day_number, f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", f"{(gain_actual/gain_optimal):.2%}"], divider=True)
+
+    if args.verbose:
+        logger.info(f"\n{detailed_backtest_table.get_string(title=f'Detailed Backtest Result from {backtest_oldest_date} to {backtest_newest_date}')}")
+    else:
+        logger.info(f"\n{backtest_table.get_string(title=f'Backtest Result from {backtest_oldest_date} to {backtest_newest_date}')}")
 
     all_predictions = []
     all_actuals = []

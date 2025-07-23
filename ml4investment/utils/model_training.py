@@ -106,34 +106,27 @@ def validate_model(model: lgb.Booster,
         for stock_code, data in stock_actual_gains_collect.items()
     }
 
-    optimal_mae = 100
-    optimal_predict_stock_number = -1
-    for predict_stock_number in range(100):
-        if optimize_predict_stocks:
-            logger.info("Begin predict stocks optimization")
-            logger.info(f"Using average actual gain as the predict stocks optimization metric with target number {predict_stock_number}")
-            sorted_stock_avg_actual_gain_list = sorted(stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
-            predict_stock_list = [stock for stock, _ in sorted_stock_avg_actual_gain_list[:predict_stock_number]]
-            logger.info(f"Selected {len(predict_stock_list)} stocks for prediction: {', '.join(predict_stock_list)}")
-        else:
-            logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
-            predict_stock_list = target_stock_list
+    if optimize_predict_stocks:
+        logger.info("Begin predict stocks optimization")
+        logger.info(f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
+        sorted_stock_avg_actual_gain_list = sorted(stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
+        predict_stock_list = [stock for stock, _ in sorted_stock_avg_actual_gain_list[:settings.PREDICT_STOCK_NUMBER]]
+        logger.info(f"Selected {len(predict_stock_list)} stocks for prediction: {', '.join(predict_stock_list)}")
+    else:
+        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
+        predict_stock_list = target_stock_list
 
-        avg_mae, avg_mse = get_detailed_static_result(
-            model=model,
-            X_dict=X_validate_dict,
-            y_dict=y_validate_dict,
-            predict_stock_list=predict_stock_list,
-            start_date=settings.VALIDATION_DATA_START_DATE,
-            end_date=settings.VALIDATION_DATA_END_DATE,
-            name="Validation",
-            verbose=verbose
-        )
+    avg_mae, avg_mse = get_detailed_static_result(
+        model=model,
+        X_dict=X_validate_dict,
+        y_dict=y_validate_dict,
+        predict_stock_list=predict_stock_list,
+        start_date=settings.VALIDATION_DATA_START_DATE,
+        end_date=settings.VALIDATION_DATA_END_DATE,
+        name="Validation",
+        verbose=verbose
+    )
 
-        if avg_mae < optimal_mae:
-            optimal_predict_stock_number = predict_stock_number
-            optimal_mae = avg_mae
-    logger.info(f"Optimal predict stock number: {optimal_predict_stock_number} with optimal mae:{optimal_mae:.4f}")
     logger.info("Model validation completed.")
 
     return avg_mae, predict_stock_list

@@ -75,7 +75,7 @@ def get_detailed_static_result(model: lgb.Booster,
                                start_date: str,
                                end_date: str,
                                name: str = "",
-                               verbose: bool = True) -> tuple[float, float, float]:
+                               verbose: bool = True) -> tuple[float, float]:
     """ Display detailed static result of the model predictions within a single function structure """
     assert len(X_dict) == len(y_dict), "Length of X_dict and y_dict must be the same"
     day_number = len(X_dict)

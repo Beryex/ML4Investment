@@ -65,19 +65,19 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
     top_stocks = [item for item in sorted_stock_gain_prediction if item[1] > 0][:settings.NUMBER_OF_STOCKS_TO_BUY]
     actual_number_selected = len(top_stocks)
 
+    predict_table = PrettyTable()
+    predict_table.field_names = [
+        "Stock", 
+        "Open Price Change Predict", 
+        "Recommended Weight", 
+        "Recommended Investment Value", 
+        "Close Price", 
+        "Recommended Buy in number"
+    ]
+
     if actual_number_selected == 0:
         logger.info("No stocks were recommended today (no positive predicted returns).")
-        return
     else:
-        predict_table = PrettyTable()
-        predict_table.field_names = [
-            "Stock", 
-            "Open Price Change Predict", 
-            "Recommended Weight", 
-            "Recommended Investment Value", 
-            "Close Price", 
-            "Recommended Buy in number"
-        ]
         predicted_returns = [value for _, value in top_stocks]
         total_pred = sum(predicted_returns)
         weights = [ret / total_pred for ret in predicted_returns]
@@ -96,13 +96,12 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
             ]
             predict_table.add_row(row, divider=True)
         
-        if args.verbose:
-            for stock, pred in sorted_stock_gain_prediction:
-                if stock in top_stocks:
-                    continue
-                row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
-                predict_table.add_row(row, divider=True)
-        
+    if args.verbose:
+        for stock, pred in sorted_stock_gain_prediction[actual_number_selected:]:
+            row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
+            predict_table.add_row(row, divider=True)
+    
+    if args.verbose or actual_number_selected > 0:
         logger.info(f'\n{predict_table.get_string(title=f"Suggested top {actual_number_selected} stocks to buy:")}')
 
     logger.info("Prediction process completed.")

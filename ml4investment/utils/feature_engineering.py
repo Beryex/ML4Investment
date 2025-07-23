@@ -87,7 +87,7 @@ def calculate_features(df_dict: dict) -> dict:
 
             # === VWAP ===
             df['Date'] = df.index.date # 确保 Date 列存在
-            vwap_daily = df.groupby('Date').apply(lambda x: (x['Volume'] * (x['High'] + x['Low'] + x['Close']) / 3).cumsum() / (x['Volume'].cumsum() + EPSILON))
+            vwap_daily = df.groupby('Date').apply(lambda x: (x['Volume'] * (x['High'] + x['Low'] + x['Close']) / 3).cumsum() / (x['Volume'].cumsum() + EPSILON), include_groups=False)
             vwap_daily = vwap_daily.reset_index(level=0, drop=True)
             df['VWAP_Daily'] = vwap_daily
             df['VWAP_Cumulative'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / (df['Volume'].cumsum() + EPSILON)

@@ -37,10 +37,7 @@ def predict(train_stock_list: list, predict_stock_list: list, fetched_data: dict
         close_price = daily_features_data[stock].loc[newest_date]['Close_last']
         stock_close_prices[stock] = close_price
     
-    X_predict_dict = process_features_for_predict(
-        daily_features_data, 
-        process_feature_config
-    )
+    X_predict_dict = process_features_for_predict(daily_features_data, process_feature_config)
 
     for stock, data in X_predict_dict.items():
         X_predict_dict[stock] = data[selected_features]

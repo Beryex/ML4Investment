@@ -75,7 +75,7 @@ def get_detailed_static_result(model: lgb.Booster,
                                start_date: str,
                                end_date: str,
                                name: str = "",
-                               verbose: bool = True) -> tuple[float, float]:
+                               verbose: bool = True) -> tuple[float]:
     """ Display detailed static result of the model predictions within a single function structure """
     assert len(X_dict) == len(y_dict), "Length of X_dict and y_dict must be the same"
     day_number = len(X_dict)
@@ -180,7 +180,7 @@ def get_detailed_static_result(model: lgb.Booster,
     detailed_static_table.add_row(row, divider=True)
     logger.info(f"\n{detailed_static_table.get_string(title=f'{name} Detailed Static Result')}")
 
-    return mae_overall, mse_overall
+    return gain_actual
 
 
 def OptimalIterationLogger(eval_set_idx: int = 0, metric: str = 'l1'):

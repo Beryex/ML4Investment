@@ -52,7 +52,7 @@ def model_training(X_train: pd.DataFrame,
     final_model.best_iteration = metric_logger_cb.optimal_iteration
     logger.info(f"Final model training completed. Optimal iteration on validation set: {final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}")
     
-    valid_mae, predict_stock_list = validate_model(
+    predict_stock_list = validate_model(
         final_model, 
         X_validate, y_validate,
         X_validate_dict, y_validate_dict,
@@ -73,7 +73,7 @@ def validate_model(model: lgb.Booster,
                    y_validate_dict: dict,
                    target_stock_list: list,
                    optimize_predict_stocks: bool, 
-                   verbose: bool = False) -> tuple[float, list]:
+                   verbose: bool = False) -> tuple[list]:
     """ Validate the model on the validation dataset """
     logger.info("Starting model validation on the provided validation set.")
 
@@ -108,15 +108,62 @@ def validate_model(model: lgb.Booster,
 
     if optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
-        logger.info(f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}")
-        sorted_stock_avg_actual_gain_list = sorted(stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
-        predict_stock_list = [stock for stock, _ in sorted_stock_avg_actual_gain_list[:settings.PREDICT_STOCK_NUMBER]]
-        logger.info(f"Selected {len(predict_stock_list)} stocks for prediction: {', '.join(predict_stock_list)}")
+
+        sorted_stock_items = sorted(stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True)
+        sorted_stock_code_list = [item[0] for item in sorted_stock_items]
+        predict_stock_list = [sorted_stock_code_list[0]]
+
+        original_gain = get_detailed_static_result(
+            model=model,
+            X_dict=X_validate_dict,
+            y_dict=y_validate_dict,
+            predict_stock_list=target_stock_list,
+            start_date=settings.VALIDATION_DATA_START_DATE,
+            end_date=settings.VALIDATION_DATA_END_DATE,
+            name="Validation - Predict Stock Optimization",
+            verbose=False
+        )
+        optimal_gain = -1
+        
+        for stock_idx in range(1, settings.PREDICT_STOCK_SEARCH_LIMIT):
+            logger.info(f"Current predict stock search number: {settings.PREDICT_STOCK_SEARCH_LIMIT - stock_idx}")
+
+            cur_stock_code = sorted_stock_code_list[stock_idx]
+            logger.info(f"Trying to add stock: {cur_stock_code} to predict stock list")
+            cur_predict_stock_list = predict_stock_list.copy()
+            cur_predict_stock_list.append(cur_stock_code)
+            cur_gain = get_detailed_static_result(
+                model=model,
+                X_dict=X_validate_dict,
+                y_dict=y_validate_dict,
+                predict_stock_list=cur_predict_stock_list,
+                start_date=settings.VALIDATION_DATA_START_DATE,
+                end_date=settings.VALIDATION_DATA_END_DATE,
+                name="Validation - Predict Stock Optimization",
+                verbose=False
+            )
+            logger.info(f"Current gain after adding '{cur_stock_code}': {cur_gain:+.2%}")
+
+            if cur_gain > optimal_gain:
+                logger.info(f"Adding '{cur_stock_code}' improved the gain.")
+                optimal_gain = cur_gain
+                predict_stock_list = cur_predict_stock_list
+                if verbose:
+                    logger.info(f"Updated predict stock list: {', '.join(predict_stock_list)}")
+            else:
+                logger.info(f"Adding '{cur_stock_code}' degraded gain. Skip it.")
+        
+        logger.info(f"Final selected {len(predict_stock_list)} stocks for selection, select ratio: {len(predict_stock_list) / len(target_stock_list):+.2%}")
+        logger.info(f"Final Gain after feature selection: {optimal_gain:+.2%}, improvement: x{optimal_gain / original_gain:.2f}")
+        if verbose:
+            logger.info(f"Optimal predict stocks: {predict_stock_list}")
+
+        logger.info("Prediction Stocks optimization completed.")
     else:
         logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
         predict_stock_list = target_stock_list
 
-    avg_mae, avg_mse = get_detailed_static_result(
+    gain_actual = get_detailed_static_result(
         model=model,
         X_dict=X_validate_dict,
         y_dict=y_validate_dict,
@@ -129,7 +176,7 @@ def validate_model(model: lgb.Booster,
 
     logger.info("Model validation completed.")
 
-    return avg_mae, predict_stock_list
+    return predict_stock_list
 
 
 def optimize_data_sampling_proportion(X_train: pd.DataFrame,
@@ -318,7 +365,7 @@ def optimize_model_features(X_train: pd.DataFrame,
             logger.info(f"Removing '{feature_to_remove}' degraded performance. Skip it.")
             feature_ranking = feature_ranking[1:]
     
-    logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}")
+    logger.info(f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:+.2%}")
     logger.info(f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}, improvement: {original_valid_mae - optimal_valid_mae:.6f}")
     if verbose:
         logger.info(f"Optimal features: {optimal_features}")

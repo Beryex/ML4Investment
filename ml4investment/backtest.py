@@ -63,7 +63,7 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
     feature_num = feature_nums.pop()
     logger.info(f"Number of features: {feature_num}")
     
-    avg_mae, avg_mse = get_detailed_static_result(
+    gain_actual = get_detailed_static_result(
         model=model,
         X_dict=X_backtest_dict,
         y_dict=y_backtest_dict,

@@ -9,9 +9,11 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 from ml4investment.config import settings
-from ml4investment.utils.utils import set_random_seed, get_detailed_static_result
+from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_backtest
+from ml4investment.utils.model_predicting import model_predict
+from ml4investment.utils.model_backtesting import update_backtest_gains
 
 configure_logging(env="backtest", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
@@ -25,17 +27,13 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
 
     backtest_data = {}
     train_data_start_date = settings.TRAINING_DATA_START_DATE
-    logger.info(f"Load input fetched data")
     for stock in train_stock_list:
         backtest_data[stock] = fetched_data[stock].loc[train_data_start_date:]
+    logger.info(f"Load input fetched data")
 
     daily_features_data = calculate_features(backtest_data)
 
-    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(
-        daily_features_data, 
-        process_feature_config, 
-        predict_stock_list
-    )
+    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(daily_features_data, process_feature_config, predict_stock_list)
 
     for i in range(backtest_day_number):
         for stock, data in X_backtest_dict[i].items():
@@ -49,8 +47,8 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
 
     backtest_newest_dates = {X_backtest.index.max() for X_backtest in X_backtest_dict[backtest_day_number - 1].values()}
     if len(backtest_newest_dates) != 1:
-        logger.error("Newest backtest date mismatched")
-        raise ValueError("Newest backtest date mismatched")
+        logger.error("Oldest backtest date mismatched")
+        raise ValueError("Oldest backtest date mismatched")
     backtest_newest_date = backtest_newest_dates.pop()
 
     logger.info(f"Oldest date in backtest data: {backtest_oldest_date}")
@@ -63,16 +61,87 @@ def backtest(train_stock_list:list, predict_stock_list: list, fetched_data: dict
     feature_num = feature_nums.pop()
     logger.info(f"Number of features: {feature_num}")
     
-    avg_mae, avg_mse = get_detailed_static_result(
-        model=model,
-        X_dict=X_backtest_dict,
-        y_dict=y_backtest_dict,
-        predict_stock_list=predict_stock_list,
-        start_date=backtest_oldest_date,
-        end_date=backtest_newest_date,
-        name="Backtest Overall",
-        verbose=args.verbose
-    )
+    y_predict_dict = {}
+    for i in range(backtest_day_number):
+        y_predict_dict[i] = {}
+        for stock in predict_stock_list:
+            y_predict_dict[i][stock] = model_predict(model, X_backtest_dict[i][stock])
+
+    detailed_backtest_table = PrettyTable()
+    detailed_backtest_table.field_names = [
+        "Day", 
+        "Predict daily gain", 
+        "Actual daily gain", 
+        "Optimal daily gain", 
+        "Predict optimal stock to buy",
+        "Actual optimal stock to buy",
+        "Overall Actual Gain"
+    ]
+    gain_predict = 1
+    gain_actual = 1
+    gain_optimal = 1
+    for i in range(backtest_day_number):
+        sorted_stock_gain_backtest_prediction = sorted(y_predict_dict[i].items(), key=lambda x: x[1], reverse=True)
+        sorted_stock_gain_backtest_actual = sorted(y_backtest_dict[i].items(), key=lambda x: x[1], reverse=True)
+        gain_predict, gain_actual, gain_optimal, daily_gain_predict, daily_gain_actual, daily_gain_optimal, cur_optimal_stocks, cur_actual_optimal_stocks = update_backtest_gains(
+            sorted_stock_gain_backtest_prediction,
+            sorted_stock_gain_backtest_actual,
+            y_predict_dict,
+            y_backtest_dict,
+            gain_predict,
+            gain_actual,
+            gain_optimal,
+            backtest_day_index = i,
+            number_of_stock_to_buy = settings.NUMBER_OF_STOCKS_TO_BUY
+        )
+        cur_day = {str(stock.index[0]) for stock in X_backtest_dict[i].values()}.pop()
+        cur_optimal_stocks_with_sector = []
+        for stock in cur_optimal_stocks:
+            cur_optimal_stocks_with_sector.append(f"{stock} ({settings.STOCK_SECTOR_ID_MAP[stock]})")
+        cur_actual_optimal_stocks_with_sector = []
+        for stock in cur_actual_optimal_stocks:
+            cur_actual_optimal_stocks_with_sector.append(f"{stock} ({settings.STOCK_SECTOR_ID_MAP[stock]})")
+        
+        row = [
+            cur_day, 
+            f"{daily_gain_predict:+.2%}",
+            f"{daily_gain_actual:+.2%}",
+            f"{daily_gain_optimal:+.2%}", 
+            cur_optimal_stocks_with_sector,
+            cur_actual_optimal_stocks_with_sector,
+            f"{gain_actual:+.2%}"
+        ]
+        detailed_backtest_table.add_row(row, divider=True)
+    detailed_backtest_table.add_row(["Overall", f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", "N/A", "N/A", "N/A"], divider=True)
+
+    backtest_table = PrettyTable()
+    backtest_table.field_names = [
+        "Backtest Trading Day Number", 
+        "Predict overall gain", 
+        "Actual overall gain", 
+        "Optimal overall gain", 
+        "Efficiency"
+    ]
+    backtest_table.add_row([backtest_day_number, f"{gain_predict:+.2%}", f"{gain_actual:+.2%}", f"{gain_optimal:+.2%}", f"{(gain_actual/gain_optimal):.2%}"], divider=True)
+
+    if args.verbose:
+        logger.info(f"\n{detailed_backtest_table.get_string(title=f'Detailed Backtest Result from {backtest_oldest_date} to {backtest_newest_date}')}")
+    else:
+        logger.info(f"\n{backtest_table.get_string(title=f'Backtest Result from {backtest_oldest_date} to {backtest_newest_date}')}")
+
+    all_predictions = []
+    all_actuals = []
+    for i in range(backtest_day_number):
+        for stock in predict_stock_list:
+            all_predictions.append(y_predict_dict[i][stock])
+            all_actuals.append(y_backtest_dict[i][stock])
+    all_actuals_np = np.array(all_actuals)
+    all_predictions_np = np.array(all_predictions)
+
+    overall_mae = mean_absolute_error(all_actuals_np, all_predictions_np)
+    sign_matches = (np.sign(all_predictions_np) == np.sign(all_actuals_np))
+    overall_sign_accuracy = np.mean(sign_matches)
+    logger.info(f"Backtest Overall Metrics - MAE: {overall_mae:.4f} | Sign Accuracy: {overall_sign_accuracy*100:.2f}%")
 
     logger.info("Backtesting process completed.")
 

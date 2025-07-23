@@ -5,13 +5,15 @@ import pandas_market_calendars as mcal
 from tqdm import tqdm
 from pathlib import Path
 from collections import defaultdict
+import numpy as np
+from sklearn.utils import shuffle
 
 from ml4investment.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = False) -> pd.DataFrame:
+def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = True) -> pd.DataFrame:
     """ Fetch trading day data for a given stock for the last given days with given interval from yfinance """
     logger.info(f"Fetching data from yfinance")
     fetched_data = {}
@@ -20,7 +22,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
         for stock in pbar:
             pbar.set_postfix({'stock': stock,}, refresh=True)
             
-            data = yf.download(stock, period=period, interval=interval, auto_adjust=True, progress=False).tz_convert('America/New_York')
+            data = yf.download(stock, period=period, interval=interval, auto_adjust=True, progress=False, timeout=300).tz_convert('America/New_York')
             
             assert not data.empty, f"No data fetched for {stock}"
             data.columns = data.columns.droplevel(1) if isinstance(data.columns, pd.MultiIndex) else data.columns
@@ -43,15 +45,13 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
                 
                 valid_time_mask = data.index.map(lambda x: nyse.open_at_time(schedule, x))
                 assert valid_time_mask.all(), "Found timestamps outside trading hours"
-            
-                logger.info(f"Data validation passed for {stock}")
 
             fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
-
+    
     return fetched_data
 
 
-def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> pd.DataFrame:
+def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd.DataFrame:
     """ Load the local data for the given srocks """
     logger.info(f"Loading local data")
     fetched_data = {}
@@ -88,7 +88,6 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
                     try:
                         df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
                     except FileNotFoundError:
-                        tqdm.write(f"Data not found for {stock} in year {year}, skip it")
                         continue
                     data_list.append(df_year)
             
@@ -111,11 +110,39 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = False) -> p
 
                 trading_days = schedule.index.date
                 non_trading_dates = [d for d in unique_dates if d not in trading_days]
-                assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates} for {stock}"
+                if non_trading_dates:
+                    logger.warning(f"Removing non-trading dates found for {stock}: {non_trading_dates}")
+                    data = data[data.index.normalize().isin(pd.to_datetime(trading_days))]
 
-                unique_dates_set = set(unique_dates)
+                unique_dates_set = set(pd.Series(data.index.date).unique())
                 missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
-                assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates} for {stock}"
+                if missing_trading_dates:
+                    logger.warning(f"Filling missing trading dates for {stock} using ffill: {missing_trading_dates}")
+
+                    all_expected_timestamps = pd.DatetimeIndex([])
+                    for dt_day in pd.to_datetime(trading_days):
+                        start_ts = pd.Timestamp(f"{dt_day.date()} 09:30:00", tz='America/New_York')
+                        end_ts = pd.Timestamp(f"{dt_day.date()} 15:30:00", tz='America/New_York')
+                        
+                        daily_range = pd.date_range(start=start_ts, end=end_ts, freq='30min')
+                        all_expected_timestamps = all_expected_timestamps.union(daily_range)
+
+                    all_expected_timestamps = pd.to_datetime(all_expected_timestamps)
+                    data = data.reindex(all_expected_timestamps)
+                    data = data.ffill()
+
+                final_unique_dates = pd.Series(data.index.date).unique()
+                final_unique_dates_set = set(final_unique_dates)
+
+                # No non-trading dates should exist
+                final_non_trading_dates = [d for d in final_unique_dates if d not in trading_days]
+                assert not final_non_trading_dates, \
+                    f"Post-processing: Non-trading dates still found: {final_non_trading_dates} for {stock}"
+
+                #No missing trading dates should exist
+                final_missing_trading_dates = [d for d in trading_days if d not in final_unique_dates_set]
+                assert not final_missing_trading_dates, \
+                    f"Post-processing: Missing data for trading dates still exist: {final_missing_trading_dates} for {stock}"
 
                 start_time = pd.Timestamp('09:30').time()
                 end_time = pd.Timestamp('15:30').time()
@@ -153,6 +180,65 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
 
     logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
     return merged, train_data
+
+
+def sample_training_data(X_train: pd.DataFrame, 
+                         y_train: pd.Series, 
+                         sampling_proportion: dict, 
+                         target_sample_size: int,
+                         seed: int) -> tuple[pd.DataFrame, pd.Series]:
+    """ Sample training data based on the given sampling proportion. """
+    assert np.isclose(sum(sampling_proportion.values()), 1.0, atol=1e-6), \
+        "Sampling proportions must sum to 1 across all stocks."
+
+    sampled_X_train_list = []
+    sampled_y_train_list = []
+
+    logger.info(f"Target total training sample size: {target_sample_size}")
+
+    X_train_months = X_train.index.strftime('%Y-%m')
+
+    y_train.name = 'Target'
+
+    combined_df = pd.concat([X_train, y_train], axis=1)
+
+
+    for month, proportion in sampling_proportion.items():
+        month_mask = (X_train_months == month)
+
+        cur_month_combined_orig = combined_df[month_mask]
+
+        if cur_month_combined_orig.empty:
+            logger.warning(f"Month '{month}' specified in sampling_proportion has no data in X_train. Skipping.")
+            continue
+        
+        cur_month_sample_number = round(target_sample_size * proportion)
+        
+        if cur_month_sample_number == 0:
+            logger.info(f"Month '{month}' target sample number is 0. Skipping sampling for this month.")
+            continue
+        
+        sampled_month_combined = cur_month_combined_orig.sample(
+            n=cur_month_sample_number,
+            random_state=seed,
+            replace=True
+        )
+
+        sampled_month_X_train = sampled_month_combined.drop(columns=[y_train.name])
+        sampled_month_y_train = sampled_month_combined[y_train.name]
+
+        sampled_X_train_list.append(sampled_month_X_train)
+        sampled_y_train_list.append(sampled_month_y_train)
+
+    final_X_train_sampled = pd.concat(sampled_X_train_list)
+    final_y_train_sampled = pd.concat(sampled_y_train_list)
+
+    final_X_train_sampled, final_y_train_sampled = shuffle(
+        final_X_train_sampled, final_y_train_sampled, random_state=seed
+    )
+    
+    logger.info(f"Successfully sampled training data. New training set size: {len(final_X_train_sampled)}")
+    return final_X_train_sampled, final_y_train_sampled
 
 
 def generate_stock_sectors_id_mapping(train_stock_list: list) -> dict:

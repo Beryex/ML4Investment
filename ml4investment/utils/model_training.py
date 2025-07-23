@@ -368,6 +368,11 @@ def optimize_model_hyperparameters(X_train: pd.DataFrame,
             'bagging_freq': 0,
             'bagging_fraction': 1.0,
             
+            # For feature and data, we optimize them seperately
+            'feature_fraction': trial.suggest_float('feature_fraction', 1.0, 1.0),
+            'bagging_freq': trial.suggest_int('bagging_freq', 0, 0),
+            'bagging_fraction': trial.suggest_float('bagging_fraction', 1.0, 1.0),
+            
             'seed': seed,
             'force_row_wise': True,
             'deterministic': True

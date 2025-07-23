@@ -18,15 +18,16 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
     logger.info(f"Fetching data from yfinance")
     fetched_data = {}
 
-    with tqdm(stocks, desc="Fetch stocks data") as pbar:
+    data = yf.download(stocks, period=period, interval=interval, auto_adjust=True, progress=False, timeout=300).tz_convert('America/New_York')
+    
+    with tqdm(stocks, desc="Processing fetched stocks data") as pbar:
         for stock in pbar:
             pbar.set_postfix({'stock': stock,}, refresh=True)
-            
-            data = yf.download(stock, period=period, interval=interval, auto_adjust=True, progress=False, timeout=300).tz_convert('America/New_York')
-            
-            assert not data.empty, f"No data fetched for {stock}"
-            data.columns = data.columns.droplevel(1) if isinstance(data.columns, pd.MultiIndex) else data.columns
-            unique_dates = pd.Series(data.index.date).unique()
+            df = data.xs(stock, level='Ticker', axis=1)
+
+            assert not df.empty, f"No data fetched for {stock}"
+            df.columns = df.columns.droplevel(1) if isinstance(df.columns, pd.MultiIndex) else df.columns
+            unique_dates = pd.Series(df.index.date).unique()
 
             if len(unique_dates) > 0 and check_valid:
                 nyse = mcal.get_calendar('NYSE')
@@ -43,10 +44,10 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
                 missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
                 assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates}"
                 
-                valid_time_mask = data.index.map(lambda x: nyse.open_at_time(schedule, x))
+                valid_time_mask = df.index.map(lambda x: nyse.open_at_time(schedule, x))
                 assert valid_time_mask.all(), "Found timestamps outside trading hours"
 
-            fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
+            fetched_data[stock] = df[['Open', 'High', 'Low', 'Close', 'Volume']]
     
     return fetched_data
 
@@ -153,7 +154,7 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd
                 assert valid_time_mask.all(), f"Found timestamps outside manual trading hours (09:30-15:30) for {stock}"
 
             fetched_data[stock] = data[['Open', 'High', 'Low', 'Close', 'Volume']]
-    
+
     return fetched_data
 
 

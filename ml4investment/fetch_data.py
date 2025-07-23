@@ -26,7 +26,7 @@ def fetch_data(train_stock_list: list,
         fetched_data = load_local_data(train_stock_list, base_dir=args.local_data_pth, check_valid=True)
     else:
         logger.info(f"Fetch data from yfinance for the given stocks")
-        fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.TRAIN_DAYS)
+        fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.FETCH_PERIOD)
 
     """ Merge with previous saved data """
     logger.info(args.save_fetched_data_pth)

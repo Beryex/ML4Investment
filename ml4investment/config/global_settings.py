@@ -1,5 +1,5 @@
 # Data Fetching
-TRAIN_DAYS = '60d'
+FETCH_PERIOD = '15d'
 DATA_INTERVAL = '30m'
 DATA_PER_DAY = 13
 

@@ -7,7 +7,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, precision_s
 from prettytable import PrettyTable
 
 from ml4investment.utils.model_predicting import model_predict, get_predict_top_stocks_and_weights
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -183,24 +183,22 @@ def get_detailed_static_result(model: lgb.Booster,
     return mae_overall, mse_overall
 
 
+class OptimalIterationCallback:
+    """Callback to record the optimal iteration during training."""
+    def __init__(self, eval_set_idx: int = 0, metric: str = 'l1'):
+        self.eval_set_idx = eval_set_idx
+        self.metric = metric
+        self.optimal_score = float('inf')
+        self.optimal_iteration = -1
+
+    def __call__(self, env):
+        """The callback logic."""
+        current_score = env.evaluation_result_list[self.eval_set_idx][2]
+        
+        if current_score < self.optimal_score:
+            self.optimal_score = current_score
+            self.optimal_iteration = env.iteration
+
 def OptimalIterationLogger(eval_set_idx: int = 0, metric: str = 'l1'):
-    """ Record the optimal iteration during training based on a specific metric """
-    optimal_score = float('inf')
-    optimal_iteration = -1
-
-    def _callback(env):
-        nonlocal optimal_score
-        nonlocal optimal_iteration
-        
-        current_score = env.evaluation_result_list[0][2]
-        
-        if current_score < optimal_score:
-            optimal_score = current_score
-            optimal_iteration = env.iteration
-            _callback.optimal_score = optimal_score
-            _callback.optimal_iteration = optimal_iteration 
-    
-    _callback.optimal_score  = optimal_score
-    _callback.optimal_iteration = optimal_iteration
-
-    return _callback
+    """Factory function to create an OptimalIterationCallback instance."""
+    return OptimalIterationCallback(eval_set_idx, metric)

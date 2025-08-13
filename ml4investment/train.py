@@ -6,7 +6,7 @@ import os
 import pickle
 from argparse import Namespace
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.data_loader import sample_training_data
@@ -57,31 +57,29 @@ def train(train_stock_list: list,
     logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
 
     """ 3. Load data sampling proportion, features and hyperparameters """
-    if args.optimize_data_sampling_proportion:
-        logger.info("Optimize data sampling proportion from the scratch")
-    else:
-        logger.info(f"Load input data sampling proportion")
-        optimal_data_sampling_proportion = json.load(open(args.data_sampling_proportion_pth, 'r'))
-
     if args.optimize_model_features:
         logger.info("Optimize model features from the scratch, using all features initially")
+        optimal_features = X_train.columns.tolist()
     else:
         logger.info(f"Load input model features")
-        selected_features = json.load(open(args.features_pth, 'r'))["features"]
-        X_train = X_train[selected_features]
-        X_validate = X_validate[selected_features]
+        optimal_features = json.load(open(args.features_pth, 'r'))["features"]
+        X_train = X_train[optimal_features]
+        X_validate = X_validate[optimal_features]
         for i in range(len(X_validate_dict)):
             for stock, data in X_validate_dict[i].items():
-                X_validate_dict[i][stock] = data[selected_features]
+                X_validate_dict[i][stock] = data[optimal_features]
 
     if args.optimize_model_hyperparameters:
         logger.info("Optimize model hyperparameters from the scratch")
+        optimal_model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
+        optimal_model_hyperparams.update({"seed": seed})
     else:
         logger.info("Load input model hyperparameter")
         optimal_model_hyperparams = json.load(open(args.model_hyperparams_pth, 'r'))
 
     """ 4. Optimize data sampling proportion if required """
     if args.optimize_data_sampling_proportion:
+        logger.info("Optimize data sampling proportion from the scratch")
         optimal_data_sampling_proportion = optimize_data_sampling_proportion(
             X_train, y_train, 
             X_validate, y_validate,
@@ -92,6 +90,9 @@ def train(train_stock_list: list,
             seed=seed,
             verbose=args.verbose
         )
+    else:
+        logger.info(f"Load input data sampling proportion")
+        optimal_data_sampling_proportion = json.load(open(args.data_sampling_proportion_pth, 'r'))
     
     X_train, y_train = sample_training_data(
         X_train, y_train, 

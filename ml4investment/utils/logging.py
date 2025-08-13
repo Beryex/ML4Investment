@@ -13,15 +13,15 @@ DEFAULT_NAMES = {
 }
 
 
-def configure_logging(env: str = "prod", file_name: str = None) -> None:
+def configure_logging(env: str = "prod", file_name: str = '') -> None:
     """ Setup logging based on chosen environment with custom file name """
     if env not in ENVS:
         raise ValueError(f"Invalide input env: {env}, available env: {ENVS}")
 
-    if file_name is None:
+    if file_name == '':
         file_name = DEFAULT_NAMES[env]
 
-    """ Maek file name unique by adding timestamp """
+    """ Make file name unique by adding timestamp """
     original_path = Path(file_name)
     stem = original_path.stem
     suffix = original_path.suffix

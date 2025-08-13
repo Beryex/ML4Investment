@@ -6,7 +6,7 @@ import json
 import pickle
 import lightgbm as lgb
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.feature_engineering import calculate_features, process_features_for_predict

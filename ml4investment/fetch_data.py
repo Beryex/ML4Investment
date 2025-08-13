@@ -6,7 +6,7 @@ import os
 import pickle
 from argparse import Namespace
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import fetch_data_from_yfinance, load_local_data, merge_fetched_data, generate_stock_sectors_id_mapping
 from ml4investment.utils.logging import configure_logging
 
@@ -29,7 +29,6 @@ def fetch_data(train_stock_list: list,
         fetched_data = fetch_data_from_yfinance(train_stock_list, period=settings.FETCH_PERIOD)
 
     """ Merge with previous saved data """
-    logger.info(args.save_fetched_data_pth)
     if os.path.exists(args.save_fetched_data_pth):
         logger.info(f"Loading previously saved data from {args.save_fetched_data_pth}")
         with open(args.save_fetched_data_pth, 'rb') as f:

@@ -10,8 +10,9 @@ from collections import defaultdict
 import math
 from pathlib import Path
 import json
+from typing import Any
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
 from ml4investment.utils.utils import set_random_seed, id_to_stock_code, OptimalIterationLogger, get_detailed_static_result
 
@@ -25,9 +26,9 @@ def model_training(X_train: pd.DataFrame,
                    y_validate: pd.Series, 
                    X_validate_dict: dict, 
                    y_validate_dict: dict,
-                   categorical_features: list = None,
-                   model_hyperparams: dict = None, 
-                   target_stock_list: list = None,
+                   categorical_features: list,
+                   model_hyperparams: dict, 
+                   target_stock_list: list,
                    optimize_predict_stocks: bool = True,
                    seed: int = 42,
                    verbose: bool = False) -> tuple[lgb.Booster, list]:
@@ -71,7 +72,7 @@ def validate_model(model: lgb.Booster,
                    y_validate: pd.Series,
                    X_validate_dict: dict, 
                    y_validate_dict: dict,
-                   target_stock_list: list,
+                   target_stock_list: list[str],
                    optimize_predict_stocks: bool, 
                    verbose: bool = False) -> tuple[float, list]:
     """ Validate the model on the validation dataset """
@@ -80,6 +81,7 @@ def validate_model(model: lgb.Booster,
     stock_actual_gains_collect = defaultdict(lambda: {'total_gain': 1.0, 'sample_count': 0})
 
     preds = model.predict(X_validate, num_iteration=model.best_iteration)
+    assert isinstance(preds, np.ndarray)
 
     unique_stock_ids_in_val = X_validate['stock_id'].unique()
     for stock_id_val in unique_stock_ids_in_val:
@@ -94,7 +96,7 @@ def validate_model(model: lgb.Booster,
             positive_pred_mask = stock_preds > 0
             if np.any(positive_pred_mask):
                 factors_to_multiply = 1 + stock_y_val_numpy[positive_pred_mask]
-                current_stock_gain_prod = np.prod(factors_to_multiply)
+                current_stock_gain_prod = float(np.prod(factors_to_multiply))
                 
                 stock_actual_gains_collect[stock_code_val]['total_gain'] *= current_stock_gain_prod
                 stock_actual_gains_collect[stock_code_val]['sample_count'] += len(stock_preds)
@@ -143,6 +145,7 @@ def optimize_data_sampling_proportion(X_train: pd.DataFrame,
                                       seed: int = 42,
                                       verbose: bool = False) -> dict:
     """ Optimize data sampling proportion for training """
+    assert isinstance(X_train.index, pd.DatetimeIndex)
     train_months = sorted(list(X_train.index.tz_localize(None).to_period('M').astype(str).unique()))
     def objective(trial: optuna.Trial) -> float:
         month_proportion_dict = {}
@@ -231,7 +234,7 @@ def optimize_model_features(X_train: pd.DataFrame,
                             categorical_features: list,
                             model_hyperparams: dict,
                             seed: int,
-                            verbose: bool = False) -> list[list]:
+                            verbose: bool = False) -> list[str]:
     """ Optimize model features using Recursive Feature Elimination (RFE) """
     logger.info("Feature Optimization begins...")
     # train the model to get the initial feature importance and use it as baseline
@@ -335,15 +338,13 @@ def optimize_model_hyperparameters(X_train: pd.DataFrame,
                                    categorical_features: list,
                                    given_model_hyperparams_pth: str,
                                    seed: int = 42,
-                                   verbose: bool = False) -> tuple[dict]:
+                                   verbose: bool = False) -> dict[str, Any]:
     """ Optimize model hyperparameters using Optuna """
+    cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
+    cur_train_fixed_config.update({'seed': seed})
+
     def objective(trial: optuna.Trial) -> float:
         params = {
-            'objective': 'regression_l1',
-            'metric': 'mae',
-            'verbosity': -1,
-            'boosting_type': 'dart',
-
             'drop_rate': trial.suggest_float('drop_rate', 0.05, 0.2),
             'skip_drop': trial.suggest_float('skip_drop', 0.3, 0.7),
 
@@ -353,23 +354,8 @@ def optimize_model_hyperparameters(X_train: pd.DataFrame,
 
             'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 1.0, log=True),
             'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 1.0, log=True),
-
-            'num_rounds': settings.NUM_ROUNDS,
-            
-            # For feature and data, we optimize them seperately
-            'feature_fraction': 1.0,
-            'bagging_freq': 0,
-            'bagging_fraction': 1.0,
-            
-            # For feature and data, we optimize them seperately
-            'feature_fraction': trial.suggest_float('feature_fraction', 1.0, 1.0),
-            'bagging_freq': trial.suggest_int('bagging_freq', 0, 0),
-            'bagging_fraction': trial.suggest_float('bagging_fraction', 1.0, 1.0),
-            
-            'seed': seed,
-            'force_row_wise': True,
-            'deterministic': True
         }
+        params.update(cur_train_fixed_config)
 
         cur_metric_logger_cb = OptimalIterationLogger()
         cur_model = lgb.train(
@@ -402,32 +388,17 @@ def optimize_model_hyperparameters(X_train: pd.DataFrame,
 
     logger.info("Enqueuing trial with default hyperparameter as a baseline.")
     default_params = {
-            'objective': 'regression_l1',
-            'metric': 'mae',
-            'verbosity': -1,
-            'boosting_type': 'dart',
+        'drop_rate': 0.1,
+        'skip_drop': 0.5,
 
-            'drop_rate': 0.1,
-            'skip_drop': 0.5,
+        'num_leaves': 31,
+        'learning_rate': 0.1,
+        'min_data_in_leaf': 20,
 
-            'num_leaves': 31,
-            'learning_rate': 0.1,
-            'min_data_in_leaf': 20,
-
-            'lambda_l1': 1e-8,
-            'lambda_l2': 1e-8,
-
-            'num_rounds': settings.NUM_ROUNDS,
-            
-            # For feature and data, we optimize them seperately
-            'feature_fraction': 1.0,
-            'bagging_freq': 0,
-            'bagging_fraction': 1.0,
-            
-            'seed': seed,
-            'force_row_wise': True,
-            'deterministic': True
-        }
+        'lambda_l1': 1e-8,
+        'lambda_l2': 1e-8,
+    }
+    default_params.update(cur_train_fixed_config)
     study.enqueue_trial(default_params)
 
     if given_model_hyperparams_pth and Path(given_model_hyperparams_pth).exists():
@@ -440,23 +411,8 @@ def optimize_model_hyperparameters(X_train: pd.DataFrame,
     optimal_trial = study.best_trial
     optimal_params = optimal_trial.params.copy()
     optimal_valid_mae = optimal_trial.value
-    
-    optimal_params.update({
-        'objective': 'regression_l1',
-        'metric': 'mae',
-        'verbosity': -1,
-        'boosting_type': 'dart',
+    optimal_params.update(cur_train_fixed_config)
 
-        'num_rounds': settings.NUM_ROUNDS,
-
-        'feature_fraction': 1.0,
-        'bagging_freq': 0,
-        'bagging_fraction': 1.0,
-        
-        'seed': seed,
-        'force_row_wise': True,
-        'deterministic': True
-    })
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
     logger.info(f"  Optimal Trial Value (Valid MAE): {optimal_valid_mae:.4f}")
     if verbose:

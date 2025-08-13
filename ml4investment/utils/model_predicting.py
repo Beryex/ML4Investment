@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import logging
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ def model_predict(model: lgb.Booster, x_predict: pd.DataFrame) -> float:
     try:
         X = x_predict.values.reshape(1, -1)
         y_pred = model.predict(X, num_iteration=model.best_iteration)
+        assert isinstance(y_pred, np.ndarray)
     except Exception as e:
         logger.error(f"Prediction failed: {str(e)}")
         raise RuntimeError("Prediction error occurred") from e

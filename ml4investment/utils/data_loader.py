@@ -8,17 +8,21 @@ from collections import defaultdict
 import numpy as np
 from sklearn.utils import shuffle
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = True) -> pd.DataFrame:
+def fetch_data_from_yfinance(stocks: list[str], period: str = '2y', interval: str = settings.DATA_INTERVAL, check_valid: bool = True) -> dict[str, pd.DataFrame]:
     """ Fetch trading day data for a given stock for the last given days with given interval from yfinance """
     logger.info(f"Fetching data from yfinance")
     fetched_data = {}
 
-    data = yf.download(stocks, period=period, interval=interval, auto_adjust=True, progress=False, timeout=300).tz_convert('America/New_York')
+    raw_data = yf.download(stocks, period=period, interval=interval, auto_adjust=True, progress=False, timeout=300)
+    if raw_data is None or raw_data.empty:
+        logger.warning(f"Could not fetch data for stocks: {stocks}. yfinance returned no data.")
+        return {}
+    data = raw_data.tz_convert('America/New_York')
     
     with tqdm(stocks, desc="Processing fetched stocks data") as pbar:
         for stock in pbar:
@@ -27,6 +31,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
 
             assert not df.empty, f"No data fetched for {stock}"
             df.columns = df.columns.droplevel(1) if isinstance(df.columns, pd.MultiIndex) else df.columns
+            assert isinstance(df.index, pd.DatetimeIndex)
             unique_dates = pd.Series(df.index.date).unique()
 
             if len(unique_dates) > 0 and check_valid:
@@ -36,6 +41,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
                     end_date=unique_dates.max()
                 )
 
+                assert isinstance(schedule.index, pd.DatetimeIndex)
                 trading_days = schedule.index.date
                 non_trading_dates = [d for d in unique_dates if d not in trading_days]
                 assert not non_trading_dates, f"Non-trading dates found: {non_trading_dates}"
@@ -44,7 +50,7 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
                 missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
                 assert not missing_trading_dates, f"Missing data for trading dates: {missing_trading_dates}"
                 
-                valid_time_mask = df.index.map(lambda x: nyse.open_at_time(schedule, x))
+                valid_time_mask = pd.Series(df.index.map(lambda x: nyse.open_at_time(schedule, x)))
                 assert valid_time_mask.all(), "Found timestamps outside trading hours"
 
             fetched_data[stock] = df[['Open', 'High', 'Low', 'Close', 'Volume']]
@@ -52,22 +58,26 @@ def fetch_data_from_yfinance(stocks: list, period: str = '2y', interval: str = s
     return fetched_data
 
 
-def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd.DataFrame:
+def load_local_data(stocks: list[str], base_dir: str, check_valid: bool = True) -> dict[str, pd.DataFrame]:
     """ Load the local data for the given srocks """
     logger.info(f"Loading local data")
-    fetched_data = {}
+    fetched_data: dict[str, pd.DataFrame] = {}
 
-    base_dir = Path(base_dir)
-    if not base_dir.is_dir():
-        logger.error(f"Base directory {base_dir} does not exist")
-        raise ValueError(f"Base directory {base_dir} does not exist")
+    base_dir_path = Path(base_dir)
+    if not base_dir_path.is_dir():
+        logger.error(f"Base directory {base_dir_path} does not exist")
+        raise ValueError(f"Base directory {base_dir_path} does not exist")
     
     year_folders = []
-    for item in base_dir.iterdir():
+    for item in base_dir_path.iterdir():
         if item.is_dir() and item.name.isdigit():
             year_folders.append(int(item.name))
-    earliest_year = min(year_folders)
-    latest_year = max(year_folders)
+    
+    if not year_folders:
+        earliest_year, latest_year = 0, 0
+    else:
+        earliest_year = min(year_folders)
+        latest_year = max(year_folders)
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:
         for stock in pbar:
@@ -75,24 +85,27 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd
             data_list = []
             try:
                 file_name = f"{stock}.csv"
-                file_path = base_dir / file_name
+                file_path = base_dir_path / file_name
+                if not file_path.exists():
+                    raise FileNotFoundError
                 df = pd.read_csv(file_path, index_col=0, parse_dates=True)
                 data_list.append(df)
             except FileNotFoundError:
                 tqdm.write(f"Data not found for {stock} directly in .csv format, search in year folders")
-                for year in range(earliest_year, latest_year + 1):
-                    pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
-                    year_str = str(year)
-                    file_name = f"{stock}.csv"
-                    file_path = base_dir / year_str / file_name
-                    
-                    try:
-                        df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
-                    except FileNotFoundError:
-                        continue
-                    data_list.append(df_year)
+                if earliest_year > 0:
+                    for year in range(earliest_year, latest_year + 1):
+                        pbar.set_postfix({'stock': stock, 'year': year}, refresh=True)
+                        year_str = str(year)
+                        file_name = f"{stock}.csv"
+                        file_path = base_dir_path / year_str / file_name
+                        
+                        try:
+                            df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                            data_list.append(df_year)
+                        except FileNotFoundError:
+                            continue
             
-            if len(data_list) == 0:
+            if not data_list:
                 logger.warning(f"No data found for {stock} in local files")
                 continue
 
@@ -100,6 +113,8 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd
             data = data.between_time('09:30', '15:30')
             data.sort_index(inplace=True)
             data = data.tz_localize('America/New_York', ambiguous='infer')
+            
+            assert isinstance(data.index, pd.DatetimeIndex)
             unique_dates = pd.Series(data.index.date).unique()
 
             if len(unique_dates) > 0 and check_valid:
@@ -109,11 +124,13 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd
                     end_date=unique_dates.max()
                 )
 
+                assert isinstance(schedule.index, pd.DatetimeIndex)
                 trading_days = schedule.index.date
                 non_trading_dates = [d for d in unique_dates if d not in trading_days]
                 if non_trading_dates:
                     logger.warning(f"Removing non-trading dates found for {stock}: {non_trading_dates}")
                     data = data[data.index.normalize().isin(pd.to_datetime(trading_days))]
+                    assert isinstance(data.index, pd.DatetimeIndex)
 
                 unique_dates_set = set(pd.Series(data.index.date).unique())
                 missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
@@ -131,6 +148,7 @@ def load_local_data(stocks: list, base_dir: str, check_valid: bool = True) -> pd
                     all_expected_timestamps = pd.to_datetime(all_expected_timestamps)
                     data = data.reindex(all_expected_timestamps)
                     data = data.ffill()
+                    assert isinstance(data.index, pd.DatetimeIndex)
 
                 final_unique_dates = pd.Series(data.index.date).unique()
                 final_unique_dates_set = set(final_unique_dates)
@@ -185,18 +203,19 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
 
 def sample_training_data(X_train: pd.DataFrame, 
                          y_train: pd.Series, 
-                         sampling_proportion: dict, 
+                         sampling_proportion: dict[str, float], 
                          target_sample_size: int,
                          seed: int) -> tuple[pd.DataFrame, pd.Series]:
     """ Sample training data based on the given sampling proportion. """
     assert np.isclose(sum(sampling_proportion.values()), 1.0, atol=1e-6), \
         "Sampling proportions must sum to 1 across all stocks."
 
-    sampled_X_train_list = []
-    sampled_y_train_list = []
+    sampled_X_train_list: list[pd.DataFrame] = []
+    sampled_y_train_list: list[pd.Series] = []
 
     logger.info(f"Target total training sample size: {target_sample_size}")
 
+    assert isinstance(X_train.index, pd.DatetimeIndex)
     X_train_months = X_train.index.strftime('%Y-%m')
 
     y_train.name = 'Target'
@@ -231,15 +250,23 @@ def sample_training_data(X_train: pd.DataFrame,
         sampled_X_train_list.append(sampled_month_X_train)
         sampled_y_train_list.append(sampled_month_y_train)
 
+    if not sampled_X_train_list:
+        return pd.DataFrame(), pd.Series(dtype="object")
+
     final_X_train_sampled = pd.concat(sampled_X_train_list)
     final_y_train_sampled = pd.concat(sampled_y_train_list)
 
-    final_X_train_sampled, final_y_train_sampled = shuffle(
+    shuffled = shuffle(
         final_X_train_sampled, final_y_train_sampled, random_state=seed
     )
     
-    logger.info(f"Successfully sampled training data. New training set size: {len(final_X_train_sampled)}")
-    return final_X_train_sampled, final_y_train_sampled
+    assert shuffled is not None, "Shuffle returned None unexpectedly"
+    shuffled_X, shuffled_y = shuffled
+    assert isinstance(shuffled_X, pd.DataFrame)
+    assert isinstance(shuffled_y, pd.Series)
+    
+    logger.info(f"Successfully sampled training data. New training set size: {len(shuffled_X)}")
+    return shuffled_X, shuffled_y
 
 
 def generate_stock_sectors_id_mapping(train_stock_list: list) -> dict:

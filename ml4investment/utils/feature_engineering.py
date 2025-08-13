@@ -7,8 +7,9 @@ import logging
 from tqdm import tqdm
 from sklearn.utils import shuffle
 from multiprocessing import Pool, cpu_count
+from typing import Any
 
-from ml4investment.config import settings
+from ml4investment.config.global_settings import settings
 from ml4investment.utils.utils import stock_code_to_id
 
 pd.set_option('future.no_silent_downcasting', True)
@@ -18,11 +19,12 @@ EPSILON = 1e-9
 logger = logging.getLogger(__name__)
 
 
-def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
+def calculate_one_stock_features(task: tuple[str, pd.DataFrame]) -> tuple[str, pd.DataFrame]:
         """ Calculate features for one stock """
         stock, df = task
         price_volume = ['Open', 'High', 'Low', 'Close', 'Volume']
         df = df[price_volume].copy()
+        assert isinstance(df.index, pd.DatetimeIndex)
 
         # === Basic Calculations ===
         df['Returns_1h'] = df['Close'].pct_change(fill_method=None)
@@ -233,10 +235,13 @@ def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
             start_date=unique_dates_idx.min(),
             end_date=unique_dates_idx.max()
         )
+        assert isinstance(schedule.index, pd.DatetimeIndex) 
+
         correct_trading_dates = schedule.index.date
-        buggy_trading_day_offset = CustomBusinessDay(calendar=nyse)     # here will introduce holidays caused by bug in CustomBusinessDay, so we add these fix code below
-        daily_df_aggregated_potentially_incorrect = df.resample(buggy_trading_day_offset).agg(aggregation_rules)
-        index_dates_array = daily_df_aggregated_potentially_incorrect.index.normalize().date
+        # here will introduce holidays caused by bug in CustomBusinessDay, so we add these fix code below
+        buggy_trading_day_offset = CustomBusinessDay(calendar=nyse)  # type: ignore
+        daily_df_aggregated_potentially_incorrect = df.resample(buggy_trading_day_offset).agg(aggregation_rules) # type: ignore
+        index_dates_array = daily_df_aggregated_potentially_incorrect.index.normalize().date # type: ignore
         correct_rows_mask = np.isin(index_dates_array, correct_trading_dates)
         daily_df_filtered = daily_df_aggregated_potentially_incorrect[correct_rows_mask]
         daily_df = daily_df_filtered.ffill()
@@ -268,6 +273,7 @@ def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
         daily_df['MA50_Deviation'] = daily_df['Close_last'] / (daily_df['MA50'] + EPSILON) - 1
         daily_df['MA5_vs_MA20'] = daily_df['Close_last'].rolling(5).mean() / (daily_df['Close_last'].rolling(20).mean() + EPSILON) - 1 
 
+        assert isinstance(daily_df.index, pd.DatetimeIndex)
         daily_df['Weekday'] = daily_df.index.dayofweek
         daily_df['Relative_Rank_Change'] = daily_df['Relative_Price_Position_last'].diff(3)
         daily_df['OC_Momentum'] = (daily_df['Close_last'] - daily_df['Open_first']) / (daily_df['Open_first'] + EPSILON)
@@ -329,7 +335,7 @@ def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
 
         # === Trend Signals ===
         daily_df['MACD_Diff'] = daily_df['MACD_line_last'] - daily_df['MACD_signal_last']
-        daily_df['MACD_Direction'] = (daily_df['MACD_Diff'].diff() > 0).astype(int)
+        daily_df['MACD_Direction'] = (daily_df['MACD_Diff'].diff().astype(float) > 0).astype(int)
         daily_df['Trend_Continuation_3d'] = ((daily_df['Return_1d'] > 0) & 
                                                 (daily_df['Return_1d'].shift(1) > 0) &
                                                 (daily_df['Return_1d'].shift(2) > 0)).astype(int)
@@ -347,6 +353,7 @@ def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
                                             ((daily_df['OBV_last_diff'] < 0) & (daily_df['Return_1d'] > 0)).astype(int)
 
         # === Time & Cycle Position ===
+        assert isinstance(daily_df.index, pd.DatetimeIndex)
         daily_df['Month'] = daily_df.index.month
         daily_df['Day_of_Month'] = daily_df.index.day
         daily_df['Day_of_Year'] = daily_df.index.dayofyear
@@ -407,7 +414,7 @@ def calculate_one_stock_features(task: tuple) -> pd.DataFrame:
         return stock, daily_df
 
 
-def _calculate_MACD(series: pd.DataFrame) -> pd.Series:
+def _calculate_MACD(series: pd.Series) -> tuple[pd.Series, pd.Series, pd.Series]:
     fast_ema = series.ewm(span=12, adjust=False).mean()
     slow_ema = series.ewm(span=26, adjust=False).mean()
     
@@ -419,7 +426,7 @@ def _calculate_MACD(series: pd.DataFrame) -> pd.Series:
 
 def _calculate_rsi(series: pd.Series, window: int) -> pd.Series:
     """ Compute Relative Strength Index (RSI) """
-    delta = series.diff()
+    delta = series.diff().astype(float)
     gain = delta.where(delta > 0, 0).fillna(0)
     loss = -delta.where(delta < 0, 0).fillna(0)
     
@@ -444,9 +451,9 @@ def _calculate_atr(high: pd.Series, low: pd.Series, close: pd.Series, window: in
 
 def _calculate_obv(df: pd.DataFrame) -> pd.Series:
     """ Compute On-Balance Volume (OBV) """
-    price_change = df['Close'].diff()
-    signed_volume = np.sign(price_change).fillna(0) * df['Volume']
-    return signed_volume.cumsum()
+    price_change = df['Close'].diff().fillna(0)
+    signed_volume = np.sign(price_change) * df['Volume']
+    return signed_volume.cumsum()   # type: ignore
 
 
 def _calculate_stoch(high: pd.Series, low: pd.Series, close: pd.Series, 
@@ -512,7 +519,7 @@ def _calculate_mfi(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd
 
     tp = (high + low + close) / 3
     rmf = tp * volume
-    tp_diff = tp.diff(1)
+    tp_diff = tp.diff(1).astype(float)
 
     pmf = rmf.where(tp_diff > 0, 0.0).rolling(window=timeperiod, min_periods=timeperiod).sum()
     nmf = rmf.where(tp_diff < 0, 0.0).rolling(window=timeperiod, min_periods=timeperiod).sum()
@@ -544,8 +551,8 @@ def _calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod
     if high.isna().all() or low.isna().all() or close.isna().all() or high.count() < timeperiod * 2: # ADX needs longer lookback
         return pd.Series(np.nan, index=high.index)
 
-    move_up = high.diff(1)
-    move_down = -low.diff(1) # low_prev - low
+    move_up = high.diff(1).astype(float)
+    move_down = -low.diff(1).astype(float) # low_prev - low
     
     plus_dm = pd.Series(np.where((move_up > move_down) & (move_up > 0), move_up, 0.0), index=high.index).fillna(0)
     minus_dm = pd.Series(np.where((move_down > move_up) & (move_down > 0), move_down, 0.0), index=high.index).fillna(0)
@@ -586,7 +593,7 @@ def calculate_features(df_dict: dict) -> dict:
     # === Cross-Stock Feature: After All Stocks Are Done ===
     all_data_panel = pd.concat(daily_dict, axis=1)
 
-    all_returns = all_data_panel.loc[:, pd.IndexSlice[:, 'Return_1d']].droplevel(1, axis=1)
+    all_returns = all_data_panel.loc[:, pd.IndexSlice[:, 'Return_1d']].droplevel(1, axis=1) # type: ignore
     rank_return_1d = all_returns.rank(axis=1, pct=True)
     
     features_to_rank = [
@@ -599,7 +606,7 @@ def calculate_features(df_dict: dict) -> dict:
     ]
     ranks = {}
     for feature in features_to_rank:
-        feature_data = all_data_panel.loc[:, pd.IndexSlice[:, feature]]
+        feature_data = all_data_panel.loc[:, pd.IndexSlice[:, feature]] # type: ignore
         if not feature_data.empty:
             feature_data = feature_data.droplevel(1, axis=1)
             ranks[f'Rank_{feature}'] = feature_data.rank(axis=1, pct=True)
@@ -639,12 +646,12 @@ def calculate_features(df_dict: dict) -> dict:
     return daily_dict
 
 
-def process_features_for_train_and_validate(daily_dict: dict, 
+def process_features_for_train_and_validate(daily_dict: dict[str, pd.DataFrame], 
                                             apply_clip: bool = False, 
                                             apply_scale: bool = False, 
-                                            seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict, dict, dict]:
+                                            seed: int = 42) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict, dict, dict]:
     """ Process Data, including washing, removing Nan, scaling and spliting for training purpose """
-    process_feature_config = {}
+    process_feature_config: dict[str, Any] = {}
     X_train_list, y_train_list = [], []
     X_validate_list, y_validate_list = [], []
     X_validate_dict, y_validate_dict = {}, {}
@@ -717,6 +724,8 @@ def process_features_for_train_and_validate(daily_dict: dict,
             quantiles = X_train_dropna[numerical_cols].quantile([lower_ratio, upper_ratio])
             lower_bound = quantiles.xs(lower_ratio)
             upper_bound = quantiles.xs(upper_ratio)
+            assert isinstance(lower_bound, pd.Series)
+            assert isinstance(upper_bound, pd.Series)
 
             X_train_clipped = X_train_dropna.copy()
 
@@ -805,8 +814,13 @@ def process_features_for_train_and_validate(daily_dict: dict,
     y_train = pd.concat(y_train_list)
     X_validate = pd.concat(X_validate_list)
     y_validate = pd.concat(y_validate_list)
+    assert isinstance(y_validate, pd.Series)
 
-    X_train, y_train = shuffle(X_train, y_train, random_state=seed)
+    shuffled = shuffle(X_train, y_train, random_state=seed)
+    assert shuffled is not None
+    X_train, y_train = shuffled
+    assert isinstance(X_train, pd.DataFrame)
+    assert isinstance(y_train, pd.Series)
 
     return X_train, y_train, X_validate, y_validate, X_validate_dict, y_validate_dict, process_feature_config
 

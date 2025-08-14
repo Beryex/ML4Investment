@@ -1,6 +1,12 @@
 import logging.config
+import os
 from datetime import datetime
 from pathlib import Path
+
+import wandb
+from wandb.sdk.wandb_run import Run
+
+from ml4investment.config.global_settings import settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENVS = ("fetch_data", "train", "backtest", "predict", "test")
@@ -77,3 +83,31 @@ def configure_logging(env: str = "prod", file_name: str = "") -> None:
 
     logging.config.dictConfig(config)
     logging.captureWarnings(True)
+
+
+def setup_wandb(config: dict) -> Run:
+    """Setup WandB for experiment tracking"""
+    wandb_mode = os.environ.get("WANDB_MODE", "disabled")
+
+    run: Run
+    if wandb_mode == "online":
+        wandb_group = os.environ.get("WANDB_RUN_GROUP")
+        wandb_name = os.environ.get("WANDB_RUN_NAME")
+        wandb_job_type = os.environ.get("WANDB_JOB_TYPE")
+
+        run = wandb.init(
+            mode=wandb_mode,
+            project=settings.PROJECT_NAME,
+            name=wandb_name,
+            group=wandb_group,
+            job_type=wandb_job_type,
+            config=config,
+            reinit=True,
+        )
+        logging.info(f"WandB tracking is enabled. Run name: {run.name}")
+
+    else:
+        run = wandb.init(mode="disabled")
+        logging.info("WandB tracking is disabled.")
+
+    return run

@@ -5,13 +5,15 @@ import pickle
 
 import lightgbm as lgb
 import pandas as pd
+import wandb
+from wandb.sdk.wandb_run import Run
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.feature_engineering import (
     calculate_features,
     process_features_for_backtest,
 )
-from ml4investment.utils.logging import configure_logging
+from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.utils import get_detailed_static_result, set_random_seed
 
 configure_logging(env="backtest", file_name="backtest.log")
@@ -19,6 +21,7 @@ logger = logging.getLogger("ml4investment.backtest")
 
 
 def backtest(
+    run: Run,
     train_stock_list: list,
     predict_stock_list: list,
     fetched_data: dict,
@@ -79,7 +82,15 @@ def backtest(
     feature_num = feature_nums.pop()
     logger.info(f"Number of features: {feature_num}")
 
-    avg_mae, avg_mse = get_detailed_static_result(
+    (
+        backtest_mae,
+        backtest_mse,
+        backtest_sign_acc,
+        backtest_precision,
+        backtest_recall,
+        backtest_f1,
+        backtest_gain,
+    ) = get_detailed_static_result(
         model=model,
         X_dict=X_backtest_dict,
         y_dict=y_backtest_dict,
@@ -89,6 +100,20 @@ def backtest(
         name="Backtest Overall",
         verbose=args.verbose,
     )
+
+    wandb.log(
+        {
+            "backtest_mae": backtest_mae,
+            "backtest_mse": backtest_mse,
+            "backtest_sign_acc": backtest_sign_acc,
+            "backtest_precision": backtest_precision,
+            "backtest_recall": backtest_recall,
+            "backtest_f1": backtest_f1,
+            "backtest_gain": backtest_gain,
+        }
+    )
+
+    run.finish()
 
     logger.info("Backtesting process completed.")
 
@@ -129,7 +154,10 @@ if __name__ == "__main__":
     model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
+    run = setup_wandb(config=vars(args))
+
     backtest(
+        run,
         train_stock_list,
         predict_stock_list,
         fetched_data,

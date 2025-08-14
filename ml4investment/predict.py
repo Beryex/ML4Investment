@@ -5,14 +5,16 @@ import pickle
 
 import lightgbm as lgb
 import pandas as pd
+import wandb
 from prettytable import PrettyTable
+from wandb.sdk.wandb_run import Run
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.feature_engineering import (
     calculate_features,
     process_features_for_predict,
 )
-from ml4investment.utils.logging import configure_logging
+from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.model_predicting import (
     get_predict_top_stocks_and_weights,
     model_predict,
@@ -24,6 +26,7 @@ logger = logging.getLogger("ml4investment.predict")
 
 
 def predict(
+    run: Run,
     train_stock_list: list,
     predict_stock_list: list,
     fetched_data: dict,
@@ -79,8 +82,7 @@ def predict(
     for stock in predict_stock_list:
         predictions[stock] = model_predict(model, X_predict_dict[stock])
 
-    predict_table = PrettyTable()
-    predict_table.field_names = [
+    field_names = [
         "Stock",
         "Open Price Change Predict",
         "Recommended Weight",
@@ -88,6 +90,9 @@ def predict(
         "Close Price",
         "Recommended Buy in number",
     ]
+    predict_table = PrettyTable()
+    predict_table.field_names = field_names
+    wandb_table = wandb.Table(columns=field_names)
 
     sorted_stock_gain_prediction = sorted(
         predictions.items(), key=lambda x: x[1], reverse=True
@@ -117,16 +122,29 @@ def predict(
                 recommended_buy_in_number,
             ]
             predict_table.add_row(row, divider=True)
+            wandb_table.add_data(*row)
 
     if args.verbose:
         for stock, pred in sorted_stock_gain_prediction[actual_number_selected:]:
-            row = [stock, f"{pred:+.2%}", 0, 0, f"${stock_close_prices[stock]:.2f}", 0]
+            row = [
+                stock,
+                f"{pred:+.2%}",
+                "0",
+                "0",
+                f"${stock_close_prices[stock]:.2f}",
+                0,
+            ]
             predict_table.add_row(row, divider=True)
+            wandb_table.add_data(*row)
 
     if args.verbose or actual_number_selected > 0:
         logger.info(
             f"\n{predict_table.get_string(title=f'Suggested top {actual_number_selected} stocks to buy:')}"
         )
+
+    wandb.log({"daily_predictions": wandb_table})
+
+    run.finish()
 
     logger.info("Prediction process completed.")
 
@@ -167,7 +185,10 @@ if __name__ == "__main__":
     model = lgb.Booster(model_file=args.model_pth)
     seed = args.seed
 
+    run = setup_wandb(config=vars(args))
+
     predict(
+        run,
         train_stock_list,
         predict_stock_list,
         fetched_data,

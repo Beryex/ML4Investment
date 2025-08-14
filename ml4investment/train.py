@@ -3,9 +3,10 @@ import json
 import logging
 import os
 import pickle
-from argparse import Namespace
 
 import pandas as pd
+import wandb
+from wandb.sdk.wandb_run import Run
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
@@ -13,7 +14,7 @@ from ml4investment.utils.feature_engineering import (
     calculate_features,
     process_features_for_train_and_validate,
 )
-from ml4investment.utils.logging import configure_logging
+from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.model_training import (
     model_training,
     optimize_data_sampling_proportion,
@@ -27,11 +28,11 @@ logger = logging.getLogger("ml4investment.train")
 
 
 def train(
+    run: Run,
     train_stock_list: list,
     target_stock_list: list,
     fetched_data: dict,
     seed: int,
-    args: Namespace,
 ):
     """Train model based on the given stocks"""
     logger.info(f"Start training model given stocks: {train_stock_list}")
@@ -165,7 +166,17 @@ def train(
         )
 
     """ 7. Train the final model and apply prediction stock optimization if required """
-    final_model, predict_stock_list = model_training(
+    (
+        final_model,
+        predict_stock_list,
+        valid_mae,
+        valid_mse,
+        valid_sign_acc,
+        valid_precision,
+        valid_recall,
+        valid_f1,
+        valid_gain,
+    ) = model_training(
         X_train,
         y_train,
         X_validate,
@@ -222,6 +233,20 @@ def train(
     with open(args.save_predict_stocks_pth, "w") as f:
         json.dump(predict_stocks, f, indent=4)
     logger.info(f"Predict stocks saved to {args.save_predict_stocks_pth}")
+
+    wandb.log(
+        {
+            "valid_mae": valid_mae,
+            "valid_mse": valid_mse,
+            "valid_sign_acc": valid_sign_acc,
+            "valid_precision": valid_precision,
+            "valid_recall": valid_recall,
+            "valid_f1": valid_f1,
+            "valid_gain": valid_gain,
+        }
+    )
+
+    run.finish()
 
     logger.info("Training process completed.")
 
@@ -333,4 +358,6 @@ if __name__ == "__main__":
         logging.error(error_message)
         raise ValueError(error_message)
 
-    train(train_stock_list, target_stock_list, fetched_data, seed, args)
+    run = setup_wandb(config=vars(args))
+
+    train(run, train_stock_list, target_stock_list, fetched_data, seed)

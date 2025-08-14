@@ -819,7 +819,7 @@ def calculate_features(df_dict: dict) -> dict:
     # === Cross-Stock Feature: After All Stocks Are Done ===
     all_data_panel = pd.concat(daily_dict, axis=1)
 
-    all_returns = all_data_panel.loc[:, pd.IndexSlice[:, "Return_1d"]].droplevel(   # type: ignore
+    all_returns = all_data_panel.loc[:, pd.IndexSlice[:, "Return_1d"]].droplevel(  # type: ignore
         1, axis=1
     )  # type: ignore
     rank_return_1d = all_returns.rank(axis=1, pct=True)

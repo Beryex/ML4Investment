@@ -2,6 +2,8 @@ from typing import Dict, List, Optional
 
 
 class Settings:
+    PROJECT_NAME: str = "ml4investment"
+
     # Data Fetching
     FETCH_PERIOD: str = "15d"
     DATA_INTERVAL: str = "30m"
@@ -273,9 +275,9 @@ class Settings:
     TARGET_TRAINING_SAMPLE_SIZE: int = 64000
     N_SPLIT: int = 5
     NUM_ROUNDS: int = 1000
-    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
-    HYPERPARAMETER_SEARCH_LIMIT: int = 100
-    FEATURE_SEARCH_LIMIT: int = 100
+    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 10
+    HYPERPARAMETER_SEARCH_LIMIT: int = 10
+    FEATURE_SEARCH_LIMIT: int = 10
     PREDICT_STOCK_NUMBER: int = 6
     FIXED_TRAINING_CONFIG: dict = {
         "objective": "regression_l1",

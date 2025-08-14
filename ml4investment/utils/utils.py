@@ -118,7 +118,7 @@ def get_detailed_static_result(
     end_date: str,
     name: str = "",
     verbose: bool = True,
-) -> tuple[float, float]:
+) -> tuple[float, float, float, float, float, float, float]:
     """Display detailed static result of the model predictions within a single function structure"""
     assert len(X_dict) == len(y_dict), "Length of X_dict and y_dict must be the same"
     day_number = len(X_dict)
@@ -293,7 +293,15 @@ def get_detailed_static_result(
         f"\n{detailed_static_table.get_string(title=f'{name} Detailed Static Result')}"
     )
 
-    return mae_overall, mse_overall
+    return (
+        mae_overall,
+        mse_overall,
+        float(sign_acc_overall),
+        float(precision_overall),
+        float(recall_overall),
+        float(f1_overall),
+        gain_actual,
+    )
 
 
 class OptimalIterationCallback:

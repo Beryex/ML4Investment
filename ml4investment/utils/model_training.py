@@ -35,7 +35,7 @@ def model_training(
     optimize_predict_stocks: bool = True,
     seed: int = 42,
     verbose: bool = False,
-) -> tuple[lgb.Booster, list]:
+) -> tuple[lgb.Booster, list, float, float, float, float, float, float, float]:
     """Train the final model with optimized parameters"""
     logger.info("Begin model training with optimized parameters")
     logger.info(model_hyperparams)
@@ -58,7 +58,16 @@ def model_training(
         f"Final model training completed. Optimal iteration on validation set: {final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}"
     )
 
-    valid_mae, predict_stock_list = validate_model(
+    (
+        valid_mae,
+        valid_mse,
+        valid_sign_acc,
+        valid_precision,
+        valid_recall,
+        valid_f1,
+        valid_gain,
+        predict_stock_list,
+    ) = validate_model(
         final_model,
         X_validate,
         y_validate,
@@ -71,7 +80,17 @@ def model_training(
 
     logger.info("Model training completed")
 
-    return final_model, predict_stock_list
+    return (
+        final_model,
+        predict_stock_list,
+        valid_mae,
+        valid_mse,
+        valid_sign_acc,
+        valid_precision,
+        valid_recall,
+        valid_f1,
+        valid_gain,
+    )
 
 
 def validate_model(
@@ -83,7 +102,7 @@ def validate_model(
     target_stock_list: list[str],
     optimize_predict_stocks: bool,
     verbose: bool = False,
-) -> tuple[float, list]:
+) -> tuple[float, float, float, float, float, float, float, list]:
     """Validate the model on the validation dataset"""
     logger.info("Starting model validation on the provided validation set.")
 
@@ -148,7 +167,15 @@ def validate_model(
         )
         predict_stock_list = target_stock_list
 
-    avg_mae, avg_mse = get_detailed_static_result(
+    (
+        valid_mae,
+        valid_mse,
+        valid_sign_acc,
+        valid_precision,
+        valid_recall,
+        valid_f1,
+        valid_gain,
+    ) = get_detailed_static_result(
         model=model,
         X_dict=X_validate_dict,
         y_dict=y_validate_dict,
@@ -161,7 +188,16 @@ def validate_model(
 
     logger.info("Model validation completed.")
 
-    return avg_mae, predict_stock_list
+    return (
+        valid_mae,
+        valid_mse,
+        valid_sign_acc,
+        valid_precision,
+        valid_recall,
+        valid_f1,
+        valid_gain,
+        predict_stock_list,
+    )
 
 
 def optimize_data_sampling_proportion(

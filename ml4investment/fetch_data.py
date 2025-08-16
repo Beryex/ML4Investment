@@ -9,11 +9,12 @@ import pandas as pd
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import (
-    fetch_data_from_yfinance,
+    fetch_data_from_schwab,
     generate_stock_sectors_id_mapping,
     load_local_data,
     merge_fetched_data,
 )
+from ml4investment.utils.utils import setup_schwab_client
 from ml4investment.utils.logging import configure_logging
 
 configure_logging(env="fetch_data", file_name="fetch_data.log")
@@ -32,9 +33,10 @@ def fetch_data(train_stock_list: list, args: Namespace):
             train_stock_list, base_dir=args.local_data_pth, check_valid=True
         )
     else:
-        logger.info("Fetch data from yfinance for the given stocks")
-        fetched_data = fetch_data_from_yfinance(
-            train_stock_list, period=settings.FETCH_PERIOD
+        logger.info("Fetch data from Schwab for the given stocks")
+        client, account_hash = setup_schwab_client()
+        fetched_data = fetch_data_from_schwab(
+            client, train_stock_list
         )
 
     """ Merge with previous saved data """

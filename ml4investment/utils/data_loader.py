@@ -1,6 +1,8 @@
 import logging
 from collections import defaultdict
 from pathlib import Path
+import datetime
+import schwabdev
 
 import numpy as np
 import pandas as pd
@@ -8,84 +10,160 @@ import pandas_market_calendars as mcal
 import yfinance as yf
 from sklearn.utils import shuffle
 from tqdm import tqdm
+from multiprocessing import Pool, cpu_count
 
 from ml4investment.config.global_settings import settings
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_data_from_yfinance(
+def fetch_one_stock_from_schwab(
+    task: tuple[
+        str, schwabdev.Client, datetime.datetime, datetime.datetime, int, bool
+    ],
+) -> tuple[str, pd.DataFrame]:
+    """Fetch trading day data for one stock from Schwab"""
+    stock, client, start_date, end_date, interval_mins, check_valid = task
+
+    cur_raw_data = client.price_history(
+        symbol=stock,
+        startDate=start_date,
+        endDate=end_date,
+        frequencyType="minute",
+        frequency=1,
+        needExtendedHoursData=True, 
+    ).json()
+    cur_raw_df = pd.DataFrame(cur_raw_data["candles"])
+    if cur_raw_df is None or cur_raw_df.empty:
+        logger.error(
+            f"Could not fetch data for stock: {stock}"
+        )
+        raise ValueError(f"No data returned for stock: {stock}")
+    
+    cur_raw_df['datetime'] = pd.to_datetime(cur_raw_df['datetime'] / 1000, unit='s').dt.tz_localize('UTC').dt.tz_convert('America/New_York')
+    cur_raw_df.set_index('datetime', inplace=True)
+    cur_raw_df.rename(columns={
+        'open': 'Open',
+        'high': 'High',
+        'low': 'Low',
+        'close': 'Close',
+        'volume': 'Volume'
+    }, inplace=True)
+    
+    market_open = datetime.time(9, 30)
+    market_close = datetime.time(16, 0)
+    cur_raw_df = cur_raw_df.between_time(market_open, market_close)
+
+    assert isinstance(cur_raw_df.index, pd.DatetimeIndex)
+    closing_auction_mask = cur_raw_df.index.time == market_close
+    current_indices = cur_raw_df.index[closing_auction_mask]
+    new_indices = current_indices - datetime.timedelta(minutes=1)
+    index_updates = pd.Series(new_indices, index=current_indices).to_dict()
+    cur_raw_df.rename(index=index_updates, inplace=True)
+
+    ohlcv_rules = {
+        'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+    }
+    cur_raw_df = cur_raw_df.resample(f'{interval_mins}min').agg(ohlcv_rules) # type: ignore
+    cur_raw_df.dropna(inplace=True)
+
+    cur_raw_df.columns = (
+        cur_raw_df.columns.droplevel(1)
+        if isinstance(cur_raw_df.columns, pd.MultiIndex)
+        else cur_raw_df.columns
+    )
+
+    assert isinstance(cur_raw_df.index, pd.DatetimeIndex)
+    unique_dates = pd.Series(cur_raw_df.index.date).unique()
+    
+    if len(unique_dates) > 0 and check_valid:
+        nyse = mcal.get_calendar("NYSE")
+        schedule = nyse.schedule(
+            start_date=unique_dates.min(), end_date=unique_dates.max()
+        )
+
+        assert isinstance(schedule.index, pd.DatetimeIndex)
+        trading_days = schedule.index.date
+        non_trading_dates = [d for d in unique_dates if d not in trading_days]
+        assert not non_trading_dates, (
+            f"Non-trading dates found: {non_trading_dates}"
+        )
+
+        unique_dates_set = set(unique_dates)
+        missing_trading_dates = [
+            d for d in trading_days if d not in unique_dates_set
+        ]
+        assert not missing_trading_dates, (
+            f"Missing data for trading dates: {missing_trading_dates}"
+        )
+
+        daily_counts = cur_raw_df.groupby(cur_raw_df.index.date).size()
+        short_days = daily_counts[daily_counts < settings.DATA_PER_DAY]
+
+        if not short_days.empty:
+            logger.info(f"For stock {stock}, found {len(short_days)} day(s) with insufficient data. Padding them to {settings.DATA_PER_DAY} points.")
+            
+            padding_rows = []
+            for day, actual_count in short_days.items():
+                num_to_pad = settings.DATA_PER_DAY - actual_count
+
+                last_row_of_day = cur_raw_df[cur_raw_df.index.date == day].iloc[-1]
+                last_close = last_row_of_day['Close']
+                last_timestamp = last_row_of_day.name
+
+                for i in range(num_to_pad):
+                    new_timestamp = last_timestamp + pd.Timedelta(minutes=(i + 1) * interval_mins)
+                    padding_rows.append({
+                        'datetime': new_timestamp,
+                        'Open': last_close,
+                        'High': last_close,
+                        'Low': last_close,
+                        'Close': last_close,
+                        'Volume': 1,
+                    })
+
+            if padding_rows:
+                padding_df = pd.DataFrame(padding_rows).set_index('datetime')
+                cur_raw_df = pd.concat([cur_raw_df, padding_df])
+                cur_raw_df.sort_index(inplace=True)
+
+        assert isinstance(cur_raw_df.index, pd.DatetimeIndex)
+        daily_counts = cur_raw_df.groupby(cur_raw_df.index.date).size()
+        incorrect_counts = daily_counts[daily_counts != settings.DATA_PER_DAY]
+        assert incorrect_counts.empty, (
+            f"For stock {stock}, found days with incorrect data point counts (expected {settings.DATA_PER_DAY}).\n"
+            f"Details:\n{cur_raw_df[pd.Series(cur_raw_df.index.date).isin(incorrect_counts.index).values]}"
+        )
+    
+    return stock, cur_raw_df
+
+
+def fetch_data_from_schwab(
+    client: schwabdev.Client,
     stocks: list[str],
-    period: str = "2y",
-    interval: str = settings.DATA_INTERVAL,
+    period_days: int = settings.FETCH_PERIOD_DAYS,
+    interval_mins: int = settings.DATA_INTERVAL_MINS,
     check_valid: bool = True,
 ) -> dict[str, pd.DataFrame]:
-    """Fetch trading day data for a given stock for the last given days with given interval from yfinance"""
-    logger.info("Fetching data from yfinance")
-    fetched_data = {}
+    """Fetch trading day data from Schwab"""
+    end_date = datetime.datetime.now(datetime.timezone.utc)
+    start_date = end_date - datetime.timedelta(days=period_days)
+    fetched_data: dict[str, pd.DataFrame] = {}
 
-    raw_data = yf.download(
-        stocks,
-        period=period,
-        interval=interval,
-        auto_adjust=True,
-        progress=False,
-        timeout=300,
-    )
-    if raw_data is None or raw_data.empty:
-        logger.warning(
-            f"Could not fetch data for stocks: {stocks}. yfinance returned no data."
-        )
-        return {}
-    data = raw_data.tz_convert("America/New_York")
+    tasks = [
+        (stock, client, start_date, end_date, interval_mins, check_valid)
+        for stock in stocks
+    ]
+    num_processes = min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)
 
-    with tqdm(stocks, desc="Processing fetched stocks data") as pbar:
-        for stock in pbar:
-            pbar.set_postfix(
-                {
-                    "stock": stock,
-                },
-                refresh=True,
-            )
-            df = data.xs(stock, level="Ticker", axis=1)
+    with Pool(processes=num_processes) as pool:
+        results_iterator = pool.imap(fetch_one_stock_from_schwab, tasks)
+        pbar = tqdm(results_iterator, total=len(tasks), desc="Fetching and validating stocks data")
 
-            assert not df.empty, f"No data fetched for {stock}"
-            df.columns = (
-                df.columns.droplevel(1)
-                if isinstance(df.columns, pd.MultiIndex)
-                else df.columns
-            )
-            assert isinstance(df.index, pd.DatetimeIndex)
-            unique_dates = pd.Series(df.index.date).unique()
-
-            if len(unique_dates) > 0 and check_valid:
-                nyse = mcal.get_calendar("NYSE")
-                schedule = nyse.schedule(
-                    start_date=unique_dates.min(), end_date=unique_dates.max()
-                )
-
-                assert isinstance(schedule.index, pd.DatetimeIndex)
-                trading_days = schedule.index.date
-                non_trading_dates = [d for d in unique_dates if d not in trading_days]
-                assert not non_trading_dates, (
-                    f"Non-trading dates found: {non_trading_dates}"
-                )
-
-                unique_dates_set = set(unique_dates)
-                missing_trading_dates = [
-                    d for d in trading_days if d not in unique_dates_set
-                ]
-                assert not missing_trading_dates, (
-                    f"Missing data for trading dates: {missing_trading_dates}"
-                )
-
-                valid_time_mask = pd.Series(
-                    df.index.map(lambda x: nyse.open_at_time(schedule, x))
-                )
-                assert valid_time_mask.all(), "Found timestamps outside trading hours"
-
-            fetched_data[stock] = df[["Open", "High", "Low", "Close", "Volume"]]
-
+        for stock, daily_df in pbar:
+            pbar.set_postfix({"stock": stock}, refresh=True)
+            fetched_data[stock] = daily_df
+    
     return fetched_data
 
 

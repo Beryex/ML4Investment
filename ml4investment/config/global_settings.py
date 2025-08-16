@@ -3,12 +3,12 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
-    MAX_NUM_PROCESSES: int = 4
+    MAX_NUM_PROCESSES: int = 6
     SEED: int = 42
 
     # Data Fetching
-    FETCH_PERIOD: str = "15d"
-    DATA_INTERVAL: str = "30m"
+    FETCH_PERIOD_DAYS: int = 46
+    DATA_INTERVAL_MINS: int = 30
     DATA_PER_DAY: int = 13
 
     # Feature Engineering

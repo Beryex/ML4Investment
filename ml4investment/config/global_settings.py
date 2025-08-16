@@ -3,6 +3,8 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
+    MAX_NUM_PROCESSES: int = 4
+    SEED: int = 42
 
     # Data Fetching
     FETCH_PERIOD: str = "15d"
@@ -294,7 +296,7 @@ class Settings:
 
     # Prediction
     NUMBER_OF_STOCKS_TO_BUY: int = 2
-    TOTAL_BALANCE: int = 5737
+    OPENING_STATUS: set[str] = {'PENDING_ACTIVATION', 'WORKING', 'OPEN', 'QUEUED'}
 
     # Evaluation
     TESTING_DATA_START_DATE: str = "2025-06-01"

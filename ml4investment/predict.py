@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import pickle
+import math
 
 import lightgbm as lgb
 import pandas as pd
@@ -17,13 +18,13 @@ from ml4investment.utils.feature_engineering import (
 from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.model_predicting import (
     get_predict_top_stocks_and_weights,
-    model_predict,
+    model_predict, 
+    perform_schwab_trade
 )
-from ml4investment.utils.utils import set_random_seed
+from ml4investment.utils.utils import set_random_seed, setup_schwab_client
 
 configure_logging(env="predict", file_name="predict.log")
 logger = logging.getLogger("ml4investment.predict")
-
 
 def predict(
     run: Run,
@@ -47,13 +48,6 @@ def predict(
     logger.info("Load input fetched data")
 
     daily_features_data = calculate_features(predict_data)
-
-    # Extract the close price here for the prediction needs
-    stock_close_prices = {}
-    for stock in predict_stock_list:
-        newest_date = daily_features_data[stock].index[-1]
-        close_price = daily_features_data[stock].loc[newest_date]["Close_last"]
-        stock_close_prices[stock] = close_price
 
     X_predict_dict = process_features_for_predict(
         daily_features_data, process_feature_config
@@ -87,7 +81,7 @@ def predict(
         "Open Price Change Predict",
         "Recommended Weight",
         "Recommended Investment Value",
-        "Close Price",
+        "Last Price",
         "Recommended Buy in number",
     ]
     predict_table = PrettyTable()
@@ -101,24 +95,33 @@ def predict(
         sorted_stock_gain_prediction
     )
     actual_number_selected = len(predict_top_stock_and_weights_list)
+    
+    total_balance = client.account_details(account_hash, fields="positions").json()["securitiesAccount"]["currentBalances"]["equity"]
 
+    stock_quotes = client.quotes(symbols=predict_stock_list, fields="quote").json()
+    stock_last_prices = {stock : quote['quote']['lastPrice'] for stock, quote in stock_quotes.items()}
+
+    stock_to_buy_in: dict[str, int] = {}
     if actual_number_selected == 0:
-        logger.info("No stocks were recommended today (no positive predicted returns).")
+        logger.info("No stocks were recommended today (no positive predicted returns)")
     else:
         logger.info(
-            f"Give recommendation based on total investment value: ${settings.TOTAL_BALANCE}"
+            f"Give recommendation based on total investment value: ${total_balance:.2f}"
         )
+        
         for stock, weight in predict_top_stock_and_weights_list:
-            recommended_investment_value = settings.TOTAL_BALANCE * weight
-            recommended_buy_in_number = round(
-                recommended_investment_value / stock_close_prices[stock]
+            recommended_investment_value = total_balance * weight
+            recommended_buy_in_number = math.floor(
+                recommended_investment_value / stock_last_prices[stock]
             )
+            stock_to_buy_in[stock] = recommended_buy_in_number
+            
             row = [
                 stock,
                 f"{predictions[stock]:+.2%}",
                 f"{weight:.2%}",
                 f"${recommended_investment_value:.2f}",
-                f"${stock_close_prices[stock]:.2f}",
+                f"${stock_last_prices[stock]:.2f}",
                 recommended_buy_in_number,
             ]
             predict_table.add_row(row, divider=True)
@@ -131,7 +134,7 @@ def predict(
                 f"{pred:+.2%}",
                 "0",
                 "0",
-                f"${stock_close_prices[stock]:.2f}",
+                f"${stock_last_prices[stock]:.2f}",
                 0,
             ]
             predict_table.add_row(row, divider=True)
@@ -143,6 +146,9 @@ def predict(
         )
 
     wandb.log({"daily_predictions": wandb_table})
+
+    if args.perform_trading:
+        perform_schwab_trade(client, account_hash, stock_to_buy_in)
 
     run.finish()
 
@@ -172,8 +178,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--model_pth", "-mp", type=str, default="data/prod_model.model")
 
+    parser.add_argument("--perform_trading", "-pt", action="store_true", default=False)
+
     parser.add_argument("--verbose", "-v", action="store_true", default=False)
-    parser.add_argument("--seed", "-s", type=int, default=42)
+    parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
     args = parser.parse_args()
 
@@ -186,6 +194,8 @@ if __name__ == "__main__":
     seed = args.seed
 
     run = setup_wandb(config=vars(args))
+
+    client, account_hash = setup_schwab_client()
 
     predict(
         run,

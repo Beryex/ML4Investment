@@ -806,7 +806,7 @@ def calculate_features(df_dict: dict) -> dict:
     """Process 1h OHLCV data to create daily features and prediction target"""
     daily_dict = {}
     tasks = list(df_dict.items())
-    num_processes = max(1, cpu_count() - 2)
+    num_processes = min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)
 
     with Pool(processes=num_processes) as pool:
         results_iterator = pool.imap(calculate_one_stock_features, tasks)

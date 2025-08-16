@@ -15,6 +15,7 @@
     "bagging_freq": 0,
     "bagging_fraction": 1.0,
     "seed": 42,
+    "num_threads": 4,
     "force_row_wise": true,
     "deterministic": true
 }

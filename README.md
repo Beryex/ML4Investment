@@ -41,6 +41,11 @@ conda activate ml4i
 pip install uv
 uv pip install -e '.[dev]'
 ```
+3. Create local configuration by
+```bash
+cp ml4investment/.env.example ml4investment/.env
+```
+4. Open the newly created `.env` file and enter your credentials, such as your trading platform's API Key and Secret. The API needs to be applied through Schwab Developer Portal.
 
 ## Usage
 

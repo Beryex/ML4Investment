@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pickle
+from multiprocessing import cpu_count
 
 import pandas as pd
 import wandb
@@ -52,9 +53,6 @@ def train(
         ]
 
     """ 2. Calculate and process features for all data used """
-    logger.info(
-        f"Load Calculated features, starting from {train_data_start_date} to {validation_data_end_date}"
-    )
     daily_features_data = calculate_features(train_data)
 
     (
@@ -101,6 +99,9 @@ def train(
         logger.info("Optimize model hyperparameters from the scratch")
         optimal_model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
         optimal_model_hyperparams.update({"seed": seed})
+        optimal_model_hyperparams.update(
+            {"num_threads": min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)}
+        )
     else:
         logger.info("Load input model hyperparameter")
         optimal_model_hyperparams = json.load(open(args.model_hyperparams_pth, "r"))
@@ -326,7 +327,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--verbose", "-v", action="store_true", default=False)
-    parser.add_argument("--seed", "-s", type=int, default=42)
+    parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
     args = parser.parse_args()
 

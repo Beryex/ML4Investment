@@ -14,7 +14,8 @@ from ml4investment.utils.feature_engineering import (
     process_features_for_backtest,
 )
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.utils import get_detailed_static_result, set_random_seed
+from ml4investment.utils.model_predicting import get_detailed_static_result
+from ml4investment.utils.utils import set_random_seed
 
 configure_logging(env="backtest", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")
@@ -142,7 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_pth", "-mp", type=str, default="data/prod_model.model")
 
     parser.add_argument("--verbose", "-v", action="store_true", default=False)
-    parser.add_argument("--seed", "-s", type=int, default=42)
+    parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
     args = parser.parse_args()
 

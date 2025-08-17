@@ -1,6 +1,7 @@
 import json
 import logging
 from collections import defaultdict
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +13,9 @@ from lightgbm import register_logger
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
+from ml4investment.utils.model_predicting import get_detailed_static_result
 from ml4investment.utils.utils import (
     OptimalIterationLogger,
-    get_detailed_static_result,
     id_to_stock_code,
 )
 
@@ -453,6 +454,9 @@ def optimize_model_hyperparameters(
     """Optimize model hyperparameters using Optuna"""
     cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
     cur_train_fixed_config.update({"seed": seed})
+    cur_train_fixed_config.update(
+        {"num_threads": min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)}
+    )
 
     def objective(trial: optuna.Trial) -> float:
         params = {

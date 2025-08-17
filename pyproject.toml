@@ -73,7 +73,9 @@ dependencies = [
     "websockets==15.0.1",
     "wheel==0.45.1",
     "yfinance>=0.2.63",
-    "wandb==0.21.1"
+    "wandb==0.21.1",
+    "schwabdev==2.5.0",
+    "python-dotenv==1.1.1"
 ]
 
 [project.optional-dependencies]

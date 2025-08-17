@@ -24,7 +24,7 @@ echo "Step 3: Predicting..."
 export WANDB_MODE=online
 export WANDB_RUN_NAME="date-${current_date}-predict"
 export WANDB_JOB_TYPE="predict"
-python predict.py -v
+python predict.py -pt -v
 
 echo "" # Add a blank line for readability
 

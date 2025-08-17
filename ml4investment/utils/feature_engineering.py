@@ -846,7 +846,7 @@ def calculate_features(df_dict: dict) -> dict:
 
     # === Embed ETF Features into other stocks ===
     etf_list = [
-        stock for stock in df_dict.keys() if settings.STOCK_SECTOR_ID_MAP[stock] == 12
+        stock for stock in df_dict.keys() if stock in settings.SELECTIVE_ETF
     ]  # Sector ID 12 means Other, that is ETF
     features_to_embed_from_etfs = [
         "Return_1d",
@@ -1075,7 +1075,7 @@ def process_features_for_train_and_validate(
             X_validate_list.append(X_validate_scaled)
             y_validate_list.append(y_validate_stock)
 
-            validate_day_number = df_validate.shape[0]
+            validate_day_number = X_validate_scaled.shape[0]
             for i in range(validate_day_number):
                 if i not in X_validate_dict:
                     X_validate_dict[i] = {}

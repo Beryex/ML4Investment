@@ -1,11 +1,11 @@
-import logging
-import schwabdev
 import datetime
+import logging
 
-from prettytable import PrettyTable
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+import schwabdev
+from prettytable import PrettyTable
 from sklearn.metrics import (
     f1_score,
     mean_absolute_error,
@@ -14,8 +14,8 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from ml4investment.utils.utils import get_schwab_formatted_order
 from ml4investment.config.global_settings import settings
+from ml4investment.utils.utils import get_schwab_formatted_order
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,12 @@ def get_detailed_static_result(
     for i in range(day_number):
         y_predict_dict[i] = {}
         for stock in predict_stock_list:
+            if stock not in X_dict[i]:
+                logger.warning(
+                    f"Stock {stock} not found in prediction data for day {i}"
+                )
+                continue
+
             prediction = model_predict(model, X_dict[i][stock])
 
             y_predict_dict[i][stock] = prediction
@@ -335,49 +341,78 @@ def get_detailed_static_result(
     )
 
 
-def perform_schwab_trade(client: schwabdev.Client, account_hash: str, stock_to_buy_in: dict) -> None:
-    """ Execute all required trading on schwab via api """
+def perform_schwab_trade(
+    client: schwabdev.Client, account_hash: str, stock_to_buy_in: dict
+) -> None:
+    """Execute all required trading on schwab via api"""
     logger.info("Performing Schwab trade...")
     account_orders = client.account_orders(
-        account_hash, 
-        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7), # 7 days is sufficient for daily usage, hardcoded here
+        account_hash,
         datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(
+            days=7
+        ),  # 7 days is sufficient for daily usage, hardcoded here
+        datetime.datetime.now(datetime.timezone.utc),
     ).json()
-    
-    logger.info(f"Canceling previous active orders...")
+
+    logger.info("Canceling previous active orders...")
     opening_orders = [
-        order for order in account_orders
-        if order.get('status') in settings.OPENING_STATUS
+        order
+        for order in account_orders
+        if order.get("status") in settings.OPENING_STATUS
     ]
 
     for order in opening_orders:
         order_detail = order["orderLegCollection"][0]
-        logger.info(f"{order_detail['instruction']} {order_detail['quantity']} share(s) of {order_detail['instrument']['symbol']}")
+        logger.info(
+            f"{order_detail['instruction']} {order_detail['quantity']} share(s) of {order_detail['instrument']['symbol']}"
+        )
         client.order_cancel(account_hash, order["orderId"])
-    logger.info(f"All previous active orders canceled")
+    logger.info("All previous active orders canceled")
 
     logger.info("Placing new orders...")
-    account_positions = {position["instrument"]["symbol"]: position["longQuantity"] for position in client.account_details(account_hash, fields="positions").json()["securitiesAccount"]["positions"]}
-    
+    account_positions = {
+        position["instrument"]["symbol"]: position["longQuantity"]
+        for position in client.account_details(account_hash, fields="positions").json()[
+            "securitiesAccount"
+        ]["positions"]
+    }
+
     all_stocks_involved = list(account_positions.keys() | stock_to_buy_in.keys())
     for stock in all_stocks_involved:
         if stock in stock_to_buy_in and stock not in account_positions:
             logger.info(f"New stock: Buy {stock_to_buy_in[stock]} share(s) of {stock}")
-            formatted_order = get_schwab_formatted_order(stock, "BUY", stock_to_buy_in[stock])
+            formatted_order = get_schwab_formatted_order(
+                stock, "BUY", stock_to_buy_in[stock]
+            )
             client.order_place(account_hash, formatted_order)
         elif stock in account_positions and stock not in stock_to_buy_in:
-            logger.info(f"Existing stock: Sell {account_positions[stock]} share(s) of {stock}")
-            formatted_order = get_schwab_formatted_order(stock, "SELL", account_positions[stock])
+            logger.info(
+                f"Existing stock: Sell {account_positions[stock]} share(s) of {stock}"
+            )
+            formatted_order = get_schwab_formatted_order(
+                stock, "SELL", account_positions[stock]
+            )
             client.order_place(account_hash, formatted_order)
         else:
             if stock_to_buy_in[stock] == account_positions[stock]:
-                logger.info(f"Existing stock: No change for {stock}, already holding {account_positions[stock]} share(s)")
+                logger.info(
+                    f"Existing stock: No change for {stock}, already holding {account_positions[stock]} share(s)"
+                )
             elif stock_to_buy_in[stock] > account_positions[stock]:
-                logger.info(f"Existing stock: Buy {stock_to_buy_in[stock] - account_positions[stock]} additional share(s) of {stock}")
-                formatted_order = get_schwab_formatted_order(stock, "BUY", stock_to_buy_in[stock] - account_positions[stock])
+                logger.info(
+                    f"Existing stock: Buy {stock_to_buy_in[stock] - account_positions[stock]} additional share(s) of {stock}"
+                )
+                formatted_order = get_schwab_formatted_order(
+                    stock, "BUY", stock_to_buy_in[stock] - account_positions[stock]
+                )
                 client.order_place(account_hash, formatted_order)
             else:
-                logger.info(f"Existing stock: Sell {account_positions[stock] - stock_to_buy_in[stock]} share(s) of {stock}")
-                formatted_order = get_schwab_formatted_order(stock, "SELL", account_positions[stock] - stock_to_buy_in[stock])
+                logger.info(
+                    f"Existing stock: Sell {account_positions[stock] - stock_to_buy_in[stock]} share(s) of {stock}"
+                )
+                formatted_order = get_schwab_formatted_order(
+                    stock, "SELL", account_positions[stock] - stock_to_buy_in[stock]
+                )
                 client.order_place(account_hash, formatted_order)
     logger.info("All new orders placed")

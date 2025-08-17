@@ -1,8 +1,8 @@
 import argparse
 import json
 import logging
-import pickle
 import math
+import pickle
 
 import lightgbm as lgb
 import pandas as pd
@@ -18,13 +18,14 @@ from ml4investment.utils.feature_engineering import (
 from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.model_predicting import (
     get_predict_top_stocks_and_weights,
-    model_predict, 
-    perform_schwab_trade
+    model_predict,
+    perform_schwab_trade,
 )
 from ml4investment.utils.utils import set_random_seed, setup_schwab_client
 
 configure_logging(env="predict", file_name="predict.log")
 logger = logging.getLogger("ml4investment.predict")
+
 
 def predict(
     run: Run,
@@ -95,11 +96,15 @@ def predict(
         sorted_stock_gain_prediction
     )
     actual_number_selected = len(predict_top_stock_and_weights_list)
-    
-    total_balance = client.account_details(account_hash, fields="positions").json()["securitiesAccount"]["currentBalances"]["equity"]
+
+    total_balance = client.account_details(account_hash, fields="positions").json()[
+        "securitiesAccount"
+    ]["currentBalances"]["equity"]
 
     stock_quotes = client.quotes(symbols=predict_stock_list, fields="quote").json()
-    stock_last_prices = {stock : quote['quote']['lastPrice'] for stock, quote in stock_quotes.items()}
+    stock_last_prices = {
+        stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items()
+    }
 
     stock_to_buy_in: dict[str, int] = {}
     if actual_number_selected == 0:
@@ -108,14 +113,14 @@ def predict(
         logger.info(
             f"Give recommendation based on total investment value: ${total_balance:.2f}"
         )
-        
+
         for stock, weight in predict_top_stock_and_weights_list:
             recommended_investment_value = total_balance * weight
             recommended_buy_in_number = math.floor(
                 recommended_investment_value / stock_last_prices[stock]
             )
             stock_to_buy_in[stock] = recommended_buy_in_number
-            
+
             row = [
                 stock,
                 f"{predictions[stock]:+.2%}",

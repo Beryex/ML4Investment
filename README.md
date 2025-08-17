@@ -62,8 +62,7 @@ gdown 1DWwVfCwm_JhE-_1doyrvTq72ho_DwOac --output ml4investment/data/prod_process
 
 This will download fetched_data.pkl, prod_model.model, prod_process_feature_config.pkl and place them at folder [ml4investment/data](ml4investment/data).
 
-The project supports data collection by loading local files and fetching the latest data via the yfinance API. I recommend loading the provided local files for extending your training data to several years back and using the yfinance API to fetch the most recent stock data. 
-> ⚠️ If you find the data fetching from yfinance always fails, try upgrading yfinance by ```uv pip install --upgrade yfinance```. The error is caused by the upgrade of the API within the yfinance.
+The project supports data collection by loading local files and fetching the latest data via the Schwab API. I recommend loading the provided local files for extending your training data to several years back and using the Schwab API to fetch the most recent stock data. 
 
 After downloading the data, navigate to the `ml4investment` directory, which contains the main codebase. 
 

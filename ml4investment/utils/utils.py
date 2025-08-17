@@ -1,10 +1,12 @@
 import logging
 import os
 import random
-import schwabdev
-from dotenv import load_dotenv
+import time
 
 import numpy as np
+import requests.exceptions
+import schwabdev
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -58,32 +60,50 @@ def OptimalIterationLogger(eval_set_idx: int = 0, metric: str = "l1"):
 def setup_schwab_client() -> tuple[schwabdev.Client, str]:
     """Setup Schwab client with API keys from environment variables."""
     load_dotenv()
-    APP_KEY = os.getenv('SCHWAB_APP_KEY')
-    APP_SECRET = os.getenv('SCHWAB_SECRET')
-    CALLBACK_URL = os.getenv('SCHWAB_CALLBACK_URL')
-    assert all([APP_KEY, APP_SECRET, CALLBACK_URL]), "Please set SCHWAB_APP_KEY, SCHWAB_SECRET, and SCHWAB_CALLBACK_URL in your .env file."
+    APP_KEY = os.getenv("SCHWAB_APP_KEY")
+    APP_SECRET = os.getenv("SCHWAB_SECRET")
+    CALLBACK_URL = os.getenv("SCHWAB_CALLBACK_URL")
+    assert all([APP_KEY, APP_SECRET, CALLBACK_URL]), (
+        "Please set SCHWAB_APP_KEY, SCHWAB_SECRET, and SCHWAB_CALLBACK_URL in your .env file."
+    )
     assert isinstance(CALLBACK_URL, str), "CALLBACK_URL must be a string."
     client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL)
     linked_accounts = client.account_linked().json()
-    account_hash = linked_accounts[0].get('hashValue')
+    account_hash = linked_accounts[0].get("hashValue")
     return client, account_hash
 
 
 def get_schwab_formatted_order(symbol: str, instruction: str, quantity: int) -> dict:
     """Format the order details for Schwab API."""
     return {
-        "orderType": "MARKET", 
+        "orderType": "MARKET",
         "session": "NORMAL",
         "duration": "DAY",
-        "orderStrategyType": "SINGLE", 
+        "orderStrategyType": "SINGLE",
         "orderLegCollection": [
             {
                 "instruction": instruction,
                 "quantity": quantity,
-                "instrument": {
-                    "symbol": symbol,
-                    "assetType": "EQUITY"
-                }
+                "instrument": {"symbol": symbol, "assetType": "EQUITY"},
             }
-        ]
+        ],
     }
+
+
+def retry_api_call(func, max_retries=5, base_delay=2.0):
+    """Retry API call with exponential backoff"""
+    for attempt in range(max_retries + 1):
+        try:
+            return func()
+        except (
+            requests.exceptions.JSONDecodeError,
+            requests.exceptions.RequestException,
+            ConnectionError,
+        ) as e:
+            if attempt == max_retries:
+                raise e
+            delay = base_delay * (2**attempt) + random.uniform(0, 1)
+            logger.warning(
+                f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)}. Retrying in {delay:.1f}s..."
+            )
+            time.sleep(delay)

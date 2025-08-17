@@ -14,8 +14,8 @@ from ml4investment.utils.feature_engineering import (
     process_features_for_backtest,
 )
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.utils import set_random_seed
 from ml4investment.utils.model_predicting import get_detailed_static_result
+from ml4investment.utils.utils import set_random_seed
 
 configure_logging(env="backtest", file_name="backtest.log")
 logger = logging.getLogger("ml4investment.backtest")

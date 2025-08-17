@@ -1,9 +1,9 @@
 import json
 import logging
 from collections import defaultdict
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
-from multiprocessing import cpu_count
 
 import lightgbm as lgb
 import numpy as np
@@ -454,7 +454,9 @@ def optimize_model_hyperparameters(
     """Optimize model hyperparameters using Optuna"""
     cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
     cur_train_fixed_config.update({"seed": seed})
-    cur_train_fixed_config.update({"num_threads": min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)})
+    cur_train_fixed_config.update(
+        {"num_threads": min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)}
+    )
 
     def objective(trial: optuna.Trial) -> float:
         params = {

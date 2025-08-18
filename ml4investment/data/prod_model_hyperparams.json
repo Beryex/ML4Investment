@@ -1,11 +1,11 @@
 {
-    "drop_rate": 0.1,
-    "skip_drop": 0.5,
-    "num_leaves": 31,
-    "learning_rate": 0.1,
-    "min_data_in_leaf": 20,
-    "lambda_l1": 1e-08,
-    "lambda_l2": 1e-08,
+    "drop_rate": 0.05515827816728276,
+    "skip_drop": 0.6637281608315128,
+    "num_leaves": 30,
+    "learning_rate": 0.10568529720322861,
+    "min_data_in_leaf": 45,
+    "lambda_l1": 0.00014472520367197597,
+    "lambda_l2": 0.00023641892308789696,
     "objective": "regression_l1",
     "metric": "mae",
     "verbosity": -1,
@@ -14,8 +14,8 @@
     "feature_fraction": 1.0,
     "bagging_freq": 0,
     "bagging_fraction": 1.0,
-    "seed": 42,
-    "num_threads": 4,
     "force_row_wise": true,
-    "deterministic": true
+    "deterministic": true,
+    "seed": 42,
+    "num_threads": 7
 }

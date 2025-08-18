@@ -2,6 +2,7 @@ import datetime
 import logging
 
 import lightgbm as lgb
+import pandas_market_calendars as mcal
 import numpy as np
 import pandas as pd
 import schwabdev
@@ -149,6 +150,7 @@ def get_detailed_static_result(
     end_date: str,
     name: str = "",
     verbose: bool = True,
+    hide_output: bool = False
 ) -> tuple[float, float, float, float, float, float, float]:
     """Display detailed static result of the model predictions within a single function structure"""
     assert len(X_dict) == len(y_dict), "Length of X_dict and y_dict must be the same"
@@ -278,9 +280,10 @@ def get_detailed_static_result(
             ],
             divider=True,
         )
-        logger.info(
-            f"\n{detailed_table.get_string(title=f'Detailed Backtest Result from {start_date} to {end_date}')}"
-        )
+        if not hide_output:
+            logger.info(
+                f"\n{detailed_table.get_string(title=f'Detailed Backtest Result from {start_date} to {end_date}')}"
+            )
 
     else:
         backtest_table = PrettyTable()
@@ -302,9 +305,10 @@ def get_detailed_static_result(
             ],
             divider=True,
         )
-        logger.info(
-            f"\n{backtest_table.get_string(title=f'Backtest Result from {start_date} to {end_date}')}"
-        )
+        if not hide_output:
+            logger.info(
+                f"\n{backtest_table.get_string(title=f'Backtest Result from {start_date} to {end_date}')}"
+            )
 
     detailed_static_table = PrettyTable()
     detailed_static_table.field_names = [
@@ -326,9 +330,10 @@ def get_detailed_static_result(
         f"{gain_actual:+.2%}",
     ]
     detailed_static_table.add_row(row, divider=True)
-    logger.info(
-        f"\n{detailed_static_table.get_string(title=f'{name} Detailed Static Result')}"
-    )
+    if not hide_output:
+        logger.info(
+            f"\n{detailed_static_table.get_string(title=f'{name} Detailed Static Result')}"
+        )
 
     return (
         mae_overall,
@@ -345,6 +350,16 @@ def perform_schwab_trade(
     client: schwabdev.Client, account_hash: str, stock_to_buy_in: dict
 ) -> None:
     """Execute all required trading on schwab via api"""
+    now_et = pd.Timestamp.now(tz='America/New_York')
+    if now_et.weekday() < 5:
+        # Define trading hours
+        start_time = datetime.time(9, 30)
+        end_time = datetime.time(16, 0)
+
+        if start_time <= now_et.time() < end_time:
+            logger.warning(f"Trading can only be executed except market hours to avoid Day Trader Pattern. No trading executed!")
+            return
+    
     logger.info("Performing Schwab trade...")
     account_orders = client.account_orders(
         account_hash,
@@ -415,4 +430,5 @@ def perform_schwab_trade(
                     stock, "SELL", account_positions[stock] - stock_to_buy_in[stock]
                 )
                 client.order_place(account_hash, formatted_order)
+
     logger.info("All new orders placed")

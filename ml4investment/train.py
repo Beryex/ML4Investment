@@ -24,9 +24,6 @@ from ml4investment.utils.model_training import (
 )
 from ml4investment.utils.utils import set_random_seed
 
-configure_logging(env="train", file_name="train.log")
-logger = logging.getLogger("ml4investment.train")
-
 
 def train(
     run: Run,
@@ -330,6 +327,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
     args = parser.parse_args()
+
+    configure_logging(env="train", file_name="train.log")
+    logger = logging.getLogger("ml4investment.train")
 
     train_stock_list = json.load(open(args.train_stocks, "r"))["train_stocks"]
     target_stock_list = json.load(open(args.target_stocks, "r"))["target_stocks"]

@@ -102,7 +102,7 @@ def setup_wandb(config: dict) -> Run:
             group=wandb_group,
             job_type=wandb_job_type,
             config=config,
-            reinit=True,
+            reinit="finish_previous",
         )
         logging.info(f"WandB tracking is enabled. Run name: {run.name}")
 

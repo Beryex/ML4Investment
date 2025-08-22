@@ -23,9 +23,6 @@ from ml4investment.utils.model_predicting import (
 )
 from ml4investment.utils.utils import set_random_seed, setup_schwab_client
 
-configure_logging(env="predict", file_name="predict.log")
-logger = logging.getLogger("ml4investment.predict")
-
 
 def predict(
     run: Run,
@@ -189,6 +186,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
     args = parser.parse_args()
+
+    configure_logging(env="predict", file_name="predict.log")
+    logger = logging.getLogger("ml4investment.predict")
 
     train_stock_list = json.load(open(args.train_stocks, "r"))["train_stocks"]
     predict_stock_list = json.load(open(args.predict_stocks, "r"))["predict_stocks"]

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import lightgbm as lgb
-from tqdm import tqdm
 import numpy as np
 import optuna
 import pandas as pd
@@ -15,10 +14,7 @@ from lightgbm import register_logger
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
 from ml4investment.utils.model_predicting import get_detailed_static_result
-from ml4investment.utils.utils import (
-    OptimalIterationLogger,
-    id_to_stock_code,
-)
+from ml4investment.utils.utils import OptimalIterationLogger, id_to_stock_code
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
@@ -108,55 +104,58 @@ def validate_model(
     """Validate the model on the validation dataset"""
     logger.info("Starting model validation on the provided validation set.")
 
+    stock_actual_gains_collect = defaultdict(
+        lambda: {"total_gain": 1.0, "sample_count": 0}
+    )
+
+    preds = model.predict(X_validate, num_iteration=model.best_iteration)
+    assert isinstance(preds, np.ndarray)
+
+    unique_stock_ids_in_val = X_validate["stock_id"].unique()
+    for stock_id_val in unique_stock_ids_in_val:
+        stock_code_val = id_to_stock_code(stock_id_val)
+
+        stock_mask = X_validate["stock_id"] == stock_id_val
+        stock_preds = preds[stock_mask]
+        stock_y_val_numpy = y_validate[stock_mask].to_numpy()
+
+        if stock_code_val in target_stock_list:
+            # Only optimize predict stock list from target stock list
+            positive_pred_mask = stock_preds > 0
+            if np.any(positive_pred_mask):
+                factors_to_multiply = 1 + stock_y_val_numpy[positive_pred_mask]
+                current_stock_gain_prod = float(np.prod(factors_to_multiply))
+
+                stock_actual_gains_collect[stock_code_val]["total_gain"] *= (
+                    current_stock_gain_prod
+                )
+                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(
+                    stock_preds
+                )
+            else:
+                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(
+                    stock_preds
+                )
+
+    stock_avg_actual_gain_dict = {
+        stock_code: data["total_gain"] ** (1 / data["sample_count"])
+        for stock_code, data in stock_actual_gains_collect.items()
+    }
+
     if optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
         logger.info(
-            f"Using average actual gain as the predict stocks optimization metric"
+            f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}"
         )
-
-        candidate_stocks = set(target_stock_list)
-        predict_stock_list = []
-        sub_optimal_stock_list = []
-        best_overall_gain = -np.inf
-        
-        for round_idx in range(settings.PREDICT_STOCK_SEARCH_LIMIT):
-            best_stock_this_round = None
-            best_gain_this_round = -np.inf
-
-            with tqdm(candidate_stocks, desc=f"Optimize prediction stocks for round {round_idx}") as pbar:
-                for stock in pbar:
-                    current_try_list = sub_optimal_stock_list + [stock]
-                    
-                    _, _, _, _, _, _, current_gain = get_detailed_static_result(
-                        model=model,
-                        X_dict=X_validate_dict,
-                        y_dict=y_validate_dict,
-                        predict_stock_list=current_try_list,
-                        start_date=settings.VALIDATION_DATA_START_DATE,
-                        end_date=settings.VALIDATION_DATA_END_DATE,
-                        name="Validation",
-                        verbose=verbose,
-                        hide_output=True
-                    )
-
-                    if current_gain > best_gain_this_round:
-                        best_gain_this_round = current_gain
-                        best_stock_this_round = stock
-
-                    pbar.set_postfix({"Best gain this round": best_gain_this_round, "Stock": stock, "Current gain": current_gain}, refresh=True)
-
-            if best_stock_this_round is None:
-                logger.info("No further improvement found. Stopping selection.")
-                break
-            
-            sub_optimal_stock_list.append(best_stock_this_round)
-            candidate_stocks.remove(best_stock_this_round)
-            
-            if best_gain_this_round > best_overall_gain:
-                logger.info(f"Adding stock {best_stock_this_round} improves the overall gain")
-                predict_stock_list = sub_optimal_stock_list.copy()
-                best_overall_gain = best_gain_this_round
-
+        sorted_stock_avg_actual_gain_list = sorted(
+            stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True
+        )
+        predict_stock_list = [
+            stock
+            for stock, _ in sorted_stock_avg_actual_gain_list[
+                : settings.PREDICT_STOCK_NUMBER
+            ]
+        ]
         logger.info(
             f"Selected {len(predict_stock_list)} stocks for prediction: {', '.join(predict_stock_list)}"
         )

@@ -12,7 +12,7 @@ echo "WANDB_RUN_GROUP set to: ${WANDB_RUN_GROUP}"
 
 echo "Step 1: Fetching Data from last trading day..."
 export WANDB_MODE=disabled
-python fetch_data.py
+# python fetch_data.py
 
 echo "Step 2: Backtesting..."
 export WANDB_MODE=online

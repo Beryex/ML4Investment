@@ -11,13 +11,11 @@ from ml4investment.utils.data_loader import (
     fetch_data_from_schwab,
     get_available_stocks,
     get_stock_sector_id_mapping,
+    load_local_data,
     merge_fetched_data,
 )
 from ml4investment.utils.logging import configure_logging
 from ml4investment.utils.utils import setup_schwab_client
-
-configure_logging(env="fetch_data", file_name="fetch_data.log")
-logger = logging.getLogger("ml4investment.fetch_data")
 
 
 def fetch_data():
@@ -36,11 +34,15 @@ def fetch_data():
     )
 
     """ Fetch new data """
-    logger.info("Fetch data from Schwab for the given stocks")
-    client, account_hash = setup_schwab_client()
-    fetched_data, cleaned_available_stocks_list = fetch_data_from_schwab(
-        client, available_stocks_list
-    )
+    if args.load_local_data:
+        logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
+        fetched_data = load_local_data(
+            available_stocks_list, base_dir=args.local_data_pth
+        )
+    else:
+        logger.info("Fetch data from Schwab for the given stocks")
+        client, account_hash = setup_schwab_client()
+        fetched_data = fetch_data_from_schwab(client, available_stocks_list)
 
     """ Merge with previous saved data """
     if os.path.exists(args.save_fetched_data_pth):
@@ -82,7 +84,7 @@ def fetch_data():
     logger.info(f"Fetched data saved to {args.save_fetched_data_pth}")
 
     if args.get_available_stocks:
-        available_stocks = {"available_stocks": cleaned_available_stocks_list}
+        available_stocks = {"available_stocks": available_stocks_list}
         os.makedirs(os.path.dirname(args.save_available_stocks_pth), exist_ok=True)
         with open(args.save_available_stocks_pth, "w") as f:
             json.dump(available_stocks, f, indent=4)
@@ -114,6 +116,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_available_stocks_pth", type=str, default="config/available_stocks.json"
     )
+    parser.add_argument("--load_local_data", "-lld", action="store_true", default=False)
+    parser.add_argument("--local_data_pth", "-ldp", type=str)
     parser.add_argument(
         "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl"
     )
@@ -129,5 +133,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    configure_logging(env="fetch_data", file_name="fetch_data.log")
+    logger = logging.getLogger("ml4investment.fetch_data")
 
     fetch_data()

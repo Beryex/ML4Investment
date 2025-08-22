@@ -2,6 +2,7 @@ import datetime
 import logging
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -37,11 +38,188 @@ def get_available_stocks() -> list[str]:
     return available_stocks_list
 
 
+def process_raw_data(
+    cur_raw_df: pd.DataFrame, stock: str, interval_mins: int
+) -> tuple[pd.DataFrame | None, list[str]]:
+    """Process raw data for a single stock"""
+    msg = []
+    cur_processed_df = cur_raw_df.copy()
+    market_open = datetime.time(9, 30)
+    market_close = datetime.time(16, 0)
+    cur_processed_df = cur_processed_df.between_time(market_open, market_close)
+
+    if cur_processed_df.empty:
+        msg.append(f"Stock {stock}: No data within market hours. Skip it")
+        return None, msg
+
+    if not isinstance(cur_processed_df.index, pd.DatetimeIndex):
+        msg.append(
+            f"Stock {stock}: Index is not DatetimeIndex after filtering. Skip it"
+        )
+        return None, msg
+
+    closing_auction_mask = cur_processed_df.index.time == market_close
+    current_indices = cur_processed_df.index[closing_auction_mask]
+    new_indices = current_indices - datetime.timedelta(minutes=1)
+    index_updates = pd.Series(new_indices, index=current_indices).to_dict()
+    cur_processed_df.rename(index=index_updates, inplace=True)
+
+    ohlcv_rules = {
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum",
+    }
+    try:
+        cur_processed_df = cur_processed_df.resample(f"{interval_mins}min").agg(
+            ohlcv_rules
+        )  # type: ignore
+    except (TypeError, ValueError) as e:
+        msg.append(f"Stock {stock}: Resample failed: {str(e)}. Skip it")
+        return None, msg
+    cur_processed_df.dropna(inplace=True)
+
+    cur_processed_df.columns = (
+        cur_processed_df.columns.droplevel(1)
+        if isinstance(cur_processed_df.columns, pd.MultiIndex)
+        else cur_processed_df.columns
+    )
+
+    nyse = mcal.get_calendar("NYSE")
+
+    """ Filter non-trading dates """
+    assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
+    unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
+    schedule_in_range = nyse.schedule(
+        start_date=unique_dates.min(), end_date=unique_dates.max()
+    )
+    assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
+    trading_days_set = set(pd.to_datetime(schedule_in_range.index.date))
+
+    non_trading_dates_mask = ~pd.Series(unique_dates).isin(list(trading_days_set))
+    non_trading_dates_found = unique_dates[non_trading_dates_mask]
+
+    if not non_trading_dates_found.empty:
+        last_non_trading_date = non_trading_dates_found.max().date()
+        msg.append(
+            f"Stock {stock}: Found non-trading date {last_non_trading_date}. Removing data on or before this date."
+        )
+        cur_processed_df = cur_processed_df[
+            cur_processed_df.index.date > last_non_trading_date
+        ]
+
+    if cur_processed_df.empty:
+        msg.append(
+            f"Stock {stock}: No data remains after removing non-trading dates. Skip it"
+        )
+        return None, msg
+
+    """ Filter missing trading dates """
+    assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
+    unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
+    unique_dates_set = set(unique_dates)
+    schedule_in_range = nyse.schedule(
+        start_date=unique_dates.min(), end_date=unique_dates.max()
+    )
+    assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
+    all_trading_days_in_range = set(pd.to_datetime(schedule_in_range.index.date))
+
+    missing_dates = all_trading_days_in_range - unique_dates_set
+    if missing_dates:
+        last_missing_date = max(missing_dates).date()
+        msg.append(
+            f"Stock {stock}: Found missing trading date up to {last_missing_date}. Removing data on or before this date."
+        )
+        cur_processed_df = cur_processed_df[
+            cur_processed_df.index.date > last_missing_date
+        ]
+
+    if cur_processed_df.empty:
+        msg.append(
+            f"Stock {stock}: No data remains after removing days preceding data gaps. Skip it"
+        )
+        return None, msg
+
+    """ Filter for valid trading days """
+    assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
+    daily_first_timestamps = cur_processed_df.groupby(
+        cur_processed_df.index.date
+    ).apply(lambda group: group.index.min())
+    invalid_start_mask = daily_first_timestamps.dt.time != market_open
+    invalid_start_days = daily_first_timestamps[invalid_start_mask]
+
+    if not invalid_start_days.empty:
+        last_invalid_date = invalid_start_days.index.max()
+        msg.append(
+            f"Stock {stock}: Found day {last_invalid_date} with invalid start time. Removing data on or before this date."
+        )
+        cur_processed_df = cur_processed_df[
+            cur_processed_df.index.date > last_invalid_date
+        ]
+
+    if cur_processed_df.empty:
+        msg.append(
+            f"Stock {stock}: No valid data remains after removing days with incorrect start times. Skip it"
+        )
+        return None, msg
+
+    """ Pad missing data within each day """
+    assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
+    daily_counts = cur_processed_df.groupby(cur_processed_df.index.date).size()
+    short_days = daily_counts[daily_counts < settings.DATA_PER_DAY]
+
+    if not short_days.empty:
+        padding_rows = []
+        for day, actual_count in short_days.items():
+            msg.append(
+                f"Stock {stock}: Found day {day} with {actual_count} data points. Padding to {settings.DATA_PER_DAY} points."
+            )
+            num_to_pad = settings.DATA_PER_DAY - actual_count
+
+            last_row_of_day = cur_processed_df[cur_processed_df.index.date == day].iloc[
+                -1
+            ]
+            last_close = last_row_of_day["Close"]
+            last_timestamp = last_row_of_day.name
+
+            for i in range(num_to_pad):
+                new_timestamp = last_timestamp + pd.Timedelta(
+                    minutes=(i + 1) * interval_mins
+                )
+                padding_rows.append(
+                    {
+                        "datetime": new_timestamp,
+                        "Open": last_close,
+                        "High": last_close,
+                        "Low": last_close,
+                        "Close": last_close,
+                        "Volume": 1,
+                    }
+                )
+
+        if padding_rows:
+            padding_df = pd.DataFrame(padding_rows).set_index("datetime")
+            cur_processed_df = pd.concat([cur_processed_df, padding_df])
+            cur_processed_df.sort_index(inplace=True)
+
+    assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
+    daily_counts = cur_processed_df.groupby(cur_processed_df.index.date).size()
+    incorrect_counts = daily_counts[daily_counts != settings.DATA_PER_DAY]
+    if not incorrect_counts.empty:
+        msg.append(
+            f"Found days with incorrect data point counts after padding for stock {stock}. Skip it"
+        )
+        return None, msg
+
+    return cur_processed_df[["Open", "High", "Low", "Close", "Volume"]], msg
+
+
 def fetch_one_stock_from_schwab(
-    task: tuple[str, schwabdev.Client, datetime.datetime, datetime.datetime, int, bool],
-) -> tuple[str, pd.DataFrame | None]:
+    task: tuple[str, schwabdev.Client, datetime.datetime, datetime.datetime, int],
+) -> tuple[str, pd.DataFrame | None, list[str]]:
     """Fetch trading day data for one stock from Schwab"""
-    stock, client, start_date, end_date, interval_mins, check_valid = task
+    stock, client, start_date, end_date, interval_mins = task
 
     try:
         cur_raw_data = retry_api_call(
@@ -55,16 +233,18 @@ def fetch_one_stock_from_schwab(
             ).json()
         )
     except Exception as e:
-        logger.warning(
-            f"Failed to fetch data for stock {stock} after retries: {str(e)}. Skip it"
+        return (
+            stock,
+            None,
+            [
+                f"Failed to fetch data for stock {stock} after retries: {str(e)}. Skip it"
+            ],
         )
-        return stock, None
 
     assert cur_raw_data is not None
     cur_raw_df = pd.DataFrame(cur_raw_data["candles"])
     if cur_raw_df is None or cur_raw_df.empty:
-        logger.warning(f"Stock: {stock}. contains no data. Skip it.")
-        return stock, None
+        return stock, None, [f"Stock: {stock}. contains no data. Skip it."]
 
     cur_raw_df["datetime"] = (
         pd.to_datetime(cur_raw_df["datetime"] / 1000, unit="s")
@@ -83,126 +263,9 @@ def fetch_one_stock_from_schwab(
         inplace=True,
     )
 
-    market_open = datetime.time(9, 30)
-    market_close = datetime.time(16, 0)
-    cur_raw_df = cur_raw_df.between_time(market_open, market_close)
+    cur_processed_df, msg = process_raw_data(cur_raw_df, stock, interval_mins)
 
-    if cur_raw_df.empty:
-        logger.warning(f"Stock {stock}: No data within market hours. Skip it")
-        return stock, None
-
-    if not isinstance(cur_raw_df.index, pd.DatetimeIndex):
-        logger.warning(
-            f"Stock {stock}: Index is not DatetimeIndex after filtering. Skip it"
-        )
-        return stock, None
-
-    closing_auction_mask = cur_raw_df.index.time == market_close
-    current_indices = cur_raw_df.index[closing_auction_mask]
-    new_indices = current_indices - datetime.timedelta(minutes=1)
-    index_updates = pd.Series(new_indices, index=current_indices).to_dict()
-    cur_raw_df.rename(index=index_updates, inplace=True)
-
-    ohlcv_rules = {
-        "Open": "first",
-        "High": "max",
-        "Low": "min",
-        "Close": "last",
-        "Volume": "sum",
-    }
-    try:
-        cur_raw_df = cur_raw_df.resample(f"{interval_mins}min").agg(ohlcv_rules)  # type: ignore
-    except (TypeError, ValueError) as e:
-        logger.warning(f"Stock {stock}: Resample failed: {str(e)}. Skip it")
-        return stock, None
-    cur_raw_df.dropna(inplace=True)
-
-    cur_raw_df.columns = (
-        cur_raw_df.columns.droplevel(1)
-        if isinstance(cur_raw_df.columns, pd.MultiIndex)
-        else cur_raw_df.columns
-    )
-
-    assert isinstance(cur_raw_df.index, pd.DatetimeIndex)
-    unique_dates = pd.Series(cur_raw_df.index.date).unique()
-
-    if len(unique_dates) > 0 and check_valid:
-        nyse = mcal.get_calendar("NYSE")
-        schedule = nyse.schedule(
-            start_date=unique_dates.min(), end_date=unique_dates.max()
-        )
-
-        assert isinstance(schedule.index, pd.DatetimeIndex)
-        trading_days = schedule.index.date
-        non_trading_dates = [d for d in unique_dates if d not in trading_days]
-        if non_trading_dates:
-            logger.warning(
-                f"Non-trading dates found for stock {stock}: {non_trading_dates}. Skip it"
-            )
-            return stock, None
-
-        unique_dates_set = set(unique_dates)
-        missing_trading_dates = [d for d in trading_days if d not in unique_dates_set]
-        if missing_trading_dates:
-            logger.warning(
-                f"Missing data for trading dates for stock {stock}: {missing_trading_dates}. Skip it"
-            )
-            return stock, None
-
-        daily_counts = cur_raw_df.groupby(cur_raw_df.index.date).size()
-        short_days = daily_counts[daily_counts < settings.DATA_PER_DAY]
-
-        if not short_days.empty:
-            logger.info(
-                f"For stock {stock}, found {len(short_days)} day(s) with insufficient data. Padding them to {settings.DATA_PER_DAY} points."
-            )
-
-            padding_rows = []
-            for day, actual_count in short_days.items():
-                day_df = cur_raw_df[cur_raw_df.index.date == day]
-                actual_first_timestamp = day_df.index.min()
-                if market_open != actual_first_timestamp.time():
-                    logger.warning(
-                        f"First data point for stock {stock} on {day} is not at market open. Skip it"
-                    )
-                    return stock, None
-
-                num_to_pad = settings.DATA_PER_DAY - actual_count
-
-                last_row_of_day = cur_raw_df[cur_raw_df.index.date == day].iloc[-1]
-                last_close = last_row_of_day["Close"]
-                last_timestamp = last_row_of_day.name
-
-                for i in range(num_to_pad):
-                    new_timestamp = last_timestamp + pd.Timedelta(
-                        minutes=(i + 1) * interval_mins
-                    )
-                    padding_rows.append(
-                        {
-                            "datetime": new_timestamp,
-                            "Open": last_close,
-                            "High": last_close,
-                            "Low": last_close,
-                            "Close": last_close,
-                            "Volume": 1,
-                        }
-                    )
-
-            if padding_rows:
-                padding_df = pd.DataFrame(padding_rows).set_index("datetime")
-                cur_raw_df = pd.concat([cur_raw_df, padding_df])
-                cur_raw_df.sort_index(inplace=True)
-
-        assert isinstance(cur_raw_df.index, pd.DatetimeIndex)
-        daily_counts = cur_raw_df.groupby(cur_raw_df.index.date).size()
-        incorrect_counts = daily_counts[daily_counts != settings.DATA_PER_DAY]
-        if not incorrect_counts.empty:
-            logger.warning(
-                f"Found days with incorrect data point counts after padding for stock {stock}. Skip it"
-            )
-            return stock, None
-
-    return stock, cur_raw_df
+    return stock, cur_processed_df, msg
 
 
 def fetch_data_from_schwab(
@@ -210,18 +273,13 @@ def fetch_data_from_schwab(
     stocks: list[str],
     period_days: int = settings.FETCH_PERIOD_DAYS,
     interval_mins: int = settings.DATA_INTERVAL_MINS,
-    check_valid: bool = True,
-) -> tuple[dict[str, pd.DataFrame], list[str]]:
+) -> dict[str, pd.DataFrame]:
     """Fetch trading day data from Schwab"""
     end_date = datetime.datetime.now(datetime.timezone.utc)
     start_date = end_date - datetime.timedelta(days=period_days)
     fetched_data: dict[str, pd.DataFrame] = {}
-    cleaned_stocks_set = stocks.copy()
 
-    tasks = [
-        (stock, client, start_date, end_date, interval_mins, check_valid)
-        for stock in stocks
-    ]
+    tasks = [(stock, client, start_date, end_date, interval_mins) for stock in stocks]
     num_processes = min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)
 
     with Pool(processes=num_processes) as pool:
@@ -232,16 +290,106 @@ def fetch_data_from_schwab(
             desc="Fetching and validating stocks data",
         )
 
-        for stock, daily_df in pbar:
+        for stock, daily_df, msg in pbar:
             pbar.set_postfix({"stock": stock}, refresh=True)
+            for m in msg:
+                logger.warning(m)
             if daily_df is None:
-                cleaned_stocks_set.remove(stock)
                 continue
             fetched_data[stock] = daily_df
 
-    logger.info(f"Final cleaned available stocks fetched: {len(cleaned_stocks_set)}")
+    return fetched_data
 
-    return fetched_data, cleaned_stocks_set
+
+def load_local_data(
+    stocks: list[str], base_dir: str, interval_mins: int = settings.DATA_INTERVAL_MINS
+) -> dict[str, pd.DataFrame]:
+    """Load the local data for the given stocks"""
+    logger.info("Loading local data")
+    fetched_data: dict[str, pd.DataFrame] = {}
+
+    base_dir_path = Path(base_dir)
+    if not base_dir_path.is_dir():
+        logger.error(f"Base directory {base_dir_path} does not exist")
+        raise ValueError(f"Base directory {base_dir_path} does not exist")
+
+    year_folders = []
+    for item in base_dir_path.iterdir():
+        if item.is_dir() and item.name.isdigit():
+            year_folders.append(int(item.name))
+
+    start_date = datetime.date.fromisoformat(settings.TRAINING_DATA_START_DATE)
+    earliest_year = start_date.year
+    if settings.TESTING_DATA_END_DATE is not None:
+        end_date = datetime.date.fromisoformat(settings.TESTING_DATA_END_DATE)
+    else:
+        end_date = datetime.date.today()
+    latest_year = end_date.year
+    start_date = pd.Timestamp(start_date, tz="America/New_York")
+    end_date = pd.Timestamp(end_date, tz="America/New_York")
+    logger.info(f"Filtering data between {start_date} and {end_date}")
+
+    with tqdm(stocks, desc="Fetch stocks data") as pbar:
+        for stock in pbar:
+            data_list = []
+            try:
+                file_name = f"{stock}.csv"
+                file_path = base_dir_path / file_name
+                if not file_path.exists():
+                    raise FileNotFoundError
+                df = pd.read_csv(file_path, index_col=0, parse_dates=True)
+                data_list.append(df)
+            except FileNotFoundError:
+                if earliest_year > 0:
+                    missing_year = None
+                    for year in range(earliest_year, latest_year + 1):
+                        pbar.set_postfix({"stock": stock, "year": year}, refresh=True)
+                        year_str = str(year)
+                        file_name = f"{stock}.csv"
+                        file_path = base_dir_path / year_str / file_name
+
+                        try:
+                            df_year = pd.read_csv(
+                                file_path, index_col=0, parse_dates=True
+                            )
+                            data_list.append(df_year)
+                            missing_year = False
+                        except FileNotFoundError:
+                            if missing_year is not None:
+                                logger.warning(
+                                    f"Missing year data for {stock} in year {year}. Skip it"
+                                )
+                                missing_year = True
+                                break
+
+                    if missing_year is not None and missing_year:
+                        continue
+
+            if not data_list:
+                logger.warning(f"No data found for {stock} in local files. Skip it")
+                continue
+
+            cur_raw_df = pd.concat(data_list)
+            cur_raw_df.sort_index(inplace=True)
+            cur_raw_df = cur_raw_df.tz_localize("America/New_York", ambiguous="infer")
+            cur_raw_df = cur_raw_df.loc[start_date:end_date]
+            if cur_raw_df.empty:
+                logger.warning(
+                    f"No data found for {stock} within the specified date range. Skip it"
+                )
+                continue
+
+            cur_processed_df, msg = process_raw_data(cur_raw_df, stock, interval_mins)
+
+            for m in msg:
+                logger.warning(m)
+
+            if cur_processed_df is None:
+                continue
+
+            fetched_data[stock] = cur_processed_df
+
+    return fetched_data
 
 
 def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]:

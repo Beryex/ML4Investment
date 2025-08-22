@@ -11,7 +11,7 @@ class Settings:
     AVAILABLE_STOCK_SOURCE: str = "https://companiesmarketcap.com/usa/largest-companies-in-the-usa-by-market-cap/?download=csv"
     MIN_MARKET_CAP: float = 1e9
     SELECTIVE_ETF: list[str] = ["QQQ", "SPY", "DIA", "VTV", "VUG", "GLD", "EFA", "KWEB"]
-    FETCH_PERIOD_DAYS: int = 30
+    FETCH_PERIOD_DAYS: int = 10
     DATA_INTERVAL_MINS: int = 30
     DATA_PER_DAY: int = 13
 
@@ -39,11 +39,11 @@ class Settings:
     CLIP_UPPER_QUANTILE_RATIO: float = 0.995
 
     # Model Training
-    TRAINING_DATA_START_DATE: str = "2024-12-02"
-    TRAINING_DATA_END_DATE: str = "2025-05-31"
-    VALIDATION_DATA_START_DATE: str = "2025-06-01"
-    VALIDATION_DATA_END_DATE: str = "2025-07-31"
-    TARGET_TRAINING_SAMPLE_SIZE: int = 32000
+    TRAINING_DATA_START_DATE: str = "2019-11-30"
+    TRAINING_DATA_END_DATE: str = "2024-11-30"
+    VALIDATION_DATA_START_DATE: str = "2024-12-01"
+    VALIDATION_DATA_END_DATE: str = "2025-05-31"
+    TARGET_TRAINING_SAMPLE_SIZE: int = 128000
     N_SPLIT: int = 5
     NUM_ROUNDS: int = 1000
     DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
@@ -64,11 +64,12 @@ class Settings:
     }
 
     # Prediction
+    PREDICT_STOCK_NUMBER: int = 6
     NUMBER_OF_STOCKS_TO_BUY: int = 2
     OPENING_STATUS: set[str] = {"PENDING_ACTIVATION", "WORKING", "OPEN", "QUEUED"}
 
     # Evaluation
-    TESTING_DATA_START_DATE: str = "2025-08-01"
+    TESTING_DATA_START_DATE: str = "2025-06-01"
     TESTING_DATA_END_DATE: Optional[str] = None
 
 

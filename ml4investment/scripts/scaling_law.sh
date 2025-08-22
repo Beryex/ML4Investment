@@ -9,7 +9,7 @@ export WANDB_RUN_GROUP="scaling-law-$(date +%Y%m%d-%H%M%S)"
 echo "WANDB_RUN_GROUP set to: ${WANDB_RUN_GROUP}"
 
 # Define the sample sizes to iterate over
-SAMPLE_SIZES="500 1000 2000 4000 8000 16000 32000 64000"
+SAMPLE_SIZES="1000 2000 4000 8000 16000 32000 64000 128000 256000"
 
 for sample_size in $SAMPLE_SIZES; do
     echo "================================================="

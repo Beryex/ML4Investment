@@ -203,7 +203,7 @@ def optimize_data_sampling_proportion(
     y_train: pd.Series,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
-    target_sample_size: int,
+    target_stock_list: list[str],
     categorical_features: list,
     model_hyperparams: dict,
     given_data_sampling_proportion_pth: str,
@@ -211,28 +211,16 @@ def optimize_data_sampling_proportion(
     verbose: bool = False,
 ) -> dict:
     """Optimize data sampling proportion for training"""
-    assert isinstance(X_train.index, pd.DatetimeIndex)
-    train_months = sorted(
-        list(X_train.index.tz_localize(None).to_period("M").astype(str).unique())
-    )
 
     def objective(trial: optuna.Trial) -> float:
-        month_proportion_dict = {}
-        for month in train_months:
-            month_proportion_dict[month] = trial.suggest_float(f"{month}", 0.0, 1.0)
-
-        # Normalize the proportions to sum to 1
-        total_proportion = sum(month_proportion_dict.values())
-        month_proportion_dict = {
-            month: proportion / total_proportion
-            for month, proportion in month_proportion_dict.items()
-        }
+        stock_proportion_dict = {}
+        for stock in target_stock_list:
+            stock_proportion_dict[stock] = trial.suggest_float(f"{stock}", 0.0, 1.0)
 
         cur_X_train, cur_y_train = sample_training_data(
             X_train,
             y_train,
-            sampling_proportion=month_proportion_dict,
-            target_sample_size=target_sample_size,
+            sampling_proportion=stock_proportion_dict,
             seed=seed,
         )
 
@@ -268,8 +256,8 @@ def optimize_data_sampling_proportion(
         pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
     )
 
-    logger.info("Enqueuing trial with uniform sampling proportion as a baseline.")
-    uniform_params = {month: 0.5 for month in train_months}
+    logger.info("Enqueuing trial with all data sampled as a baseline.")
+    uniform_params = {stock: 1.0 for stock in target_stock_list}
     study.enqueue_trial(uniform_params)
 
     if (
@@ -291,25 +279,20 @@ def optimize_data_sampling_proportion(
     )
 
     optimal_trial = study.best_trial
-    optimal_params = optimal_trial.params.copy()
+    optimal_data_sampling_proportion = optimal_trial.params.copy()
     optimal_valid_mae = optimal_trial.value
 
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
     logger.info(f"  Optimal Trial Value (Valid MAE): {optimal_valid_mae:.4f}")
     if verbose:
-        logger.info(f"  Optimal Trial Data Sampling Proportion: {optimal_params}")
-
-    optimal_data_sampling_proportion = {}
-    total_proportion = sum(optimal_params.values())
-    for month in train_months:
-        optimal_data_sampling_proportion[month] = (
-            optimal_params[month] / total_proportion
+        logger.info(
+            f"  Optimal Trial Data Sampling Proportion: {optimal_data_sampling_proportion}"
         )
 
     if verbose:
         logger.info("Optimal data sampling proportion:")
-        for month, proportion in optimal_data_sampling_proportion.items():
-            logger.info(f"  {month}: {proportion * 100:.2f}%")
+        for stock, proportion in optimal_data_sampling_proportion.items():
+            logger.info(f"  {stock}: {proportion * 100:.2f}%")
 
     logger.info("Data sampling proportion optimization completed")
 

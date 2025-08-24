@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Dict, List, Optional
 
 
@@ -39,11 +40,10 @@ class Settings:
     CLIP_UPPER_QUANTILE_RATIO: float = 0.995
 
     # Model Training
-    TRAINING_DATA_START_DATE: str = "2019-11-30"
+    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2019-11-30")
     TRAINING_DATA_END_DATE: str = "2024-11-30"
     VALIDATION_DATA_START_DATE: str = "2024-12-01"
     VALIDATION_DATA_END_DATE: str = "2025-05-31"
-    TARGET_TRAINING_SAMPLE_SIZE: int = 128000
     N_SPLIT: int = 5
     NUM_ROUNDS: int = 1000
     DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100

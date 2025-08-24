@@ -111,7 +111,7 @@ def train(
             y_train,
             X_validate,
             y_validate,
-            target_sample_size=args.target_sample_size,
+            target_stock_list=target_stock_list,
             categorical_features=settings.CATEGORICAL_FEATURES,
             model_hyperparams=optimal_model_hyperparams,
             given_data_sampling_proportion_pth=args.data_sampling_proportion_pth,
@@ -128,7 +128,6 @@ def train(
         X_train,
         y_train,
         sampling_proportion=optimal_data_sampling_proportion,
-        target_sample_size=args.target_sample_size,
         seed=seed,
     )
 
@@ -269,12 +268,6 @@ if __name__ == "__main__":
         "-dspp",
         type=str,
         default="data/prod_data_sampling_proportion.json",
-    )
-    parser.add_argument(
-        "--target_sample_size",
-        "-tss",
-        type=int,
-        default=settings.TARGET_TRAINING_SAMPLE_SIZE,
     )
     parser.add_argument(
         "--optimize_model_features", "-omf", action="store_true", default=False

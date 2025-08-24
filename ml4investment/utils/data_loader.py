@@ -1,10 +1,10 @@
 import datetime
 import logging
+import math
 from collections import defaultdict
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 import schwabdev
@@ -13,7 +13,7 @@ from sklearn.utils import shuffle
 from tqdm import tqdm
 
 from ml4investment.config.global_settings import settings
-from ml4investment.utils.utils import retry_api_call
+from ml4investment.utils.utils import retry_api_call, stock_code_to_id
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +73,8 @@ def process_raw_data(
     }
     try:
         cur_processed_df = cur_processed_df.resample(f"{interval_mins}min").agg(
-            ohlcv_rules
-        )  # type: ignore
+            ohlcv_rules  # type: ignore
+        )
     except (TypeError, ValueError) as e:
         msg.append(f"Stock {stock}: Resample failed: {str(e)}. Skip it")
         return None, msg
@@ -425,54 +425,44 @@ def sample_training_data(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     sampling_proportion: dict[str, float],
-    target_sample_size: int,
     seed: int,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Sample training data based on the given sampling proportion."""
-    assert np.isclose(sum(sampling_proportion.values()), 1.0, atol=1e-6), (
-        "Sampling proportions must sum to 1 across all stocks."
-    )
-
     sampled_X_train_list: list[pd.DataFrame] = []
     sampled_y_train_list: list[pd.Series] = []
-
-    logger.info(f"Target total training sample size: {target_sample_size}")
-
-    assert isinstance(X_train.index, pd.DatetimeIndex)
-    X_train_months = X_train.index.strftime("%Y-%m")
 
     y_train.name = "Target"
 
     combined_df = pd.concat([X_train, y_train], axis=1)
 
-    for month, proportion in sampling_proportion.items():
-        month_mask = X_train_months == month
+    for stock, proportion in sampling_proportion.items():
+        stock_mask = X_train["stock_id"] == stock_code_to_id(stock)
 
-        cur_month_combined_orig = combined_df[month_mask]
+        cur_stock_combined_orig = combined_df[stock_mask]
 
-        if cur_month_combined_orig.empty:
+        if cur_stock_combined_orig.empty:
             logger.warning(
-                f"Month '{month}' specified in sampling_proportion has no data in X_train. Skipping."
+                f"Stock '{stock}' specified in sampling_proportion has no data in X_train. Skipping."
             )
             continue
 
-        cur_month_sample_number = round(target_sample_size * proportion)
+        cur_stock_sample_number = math.floor(len(cur_stock_combined_orig) * proportion)
 
-        if cur_month_sample_number == 0:
+        if cur_stock_sample_number == 0:
             logger.info(
-                f"Month '{month}' target sample number is 0. Skipping sampling for this month."
+                f"Stock '{stock}' target sample number is 0. Skipping sampling for this stock."
             )
             continue
 
-        sampled_month_combined = cur_month_combined_orig.sample(
-            n=cur_month_sample_number, random_state=seed, replace=True
+        sampled_stock_combined = cur_stock_combined_orig.sample(
+            n=cur_stock_sample_number, random_state=seed, replace=False
         )
 
-        sampled_month_X_train = sampled_month_combined.drop(columns=[y_train.name])
-        sampled_month_y_train = sampled_month_combined[y_train.name]
+        sampled_stock_X_train = sampled_stock_combined.drop(columns=[y_train.name])
+        sampled_stock_y_train = sampled_stock_combined[y_train.name]
 
-        sampled_X_train_list.append(sampled_month_X_train)
-        sampled_y_train_list.append(sampled_month_y_train)
+        sampled_X_train_list.append(sampled_stock_X_train)
+        sampled_y_train_list.append(sampled_stock_y_train)
 
     if not sampled_X_train_list:
         return pd.DataFrame(), pd.Series(dtype="object")

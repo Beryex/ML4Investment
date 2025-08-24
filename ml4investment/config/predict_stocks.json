@@ -2,9 +2,9 @@
     "predict_stocks": [
         "HOOD",
         "PLTR",
-        "AVGO",
-        "MSTR",
+        "NET",
         "APP",
-        "GEV"
+        "AVGO",
+        "CRWD"
     ]
 }

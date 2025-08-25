@@ -138,6 +138,7 @@ def train(
             y_train,
             X_validate,
             y_validate,
+            all_features=X_train.columns.tolist(),
             categorical_features=settings.CATEGORICAL_FEATURES,
             model_hyperparams=optimal_model_hyperparams,
             seed=seed,

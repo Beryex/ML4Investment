@@ -47,7 +47,7 @@ for start_year in $START_YEARS; do
     export WANDB_MODE=online
     export WANDB_RUN_NAME="start-year-${start_year}-model-optimized-predict-stocks-unoptimized-backtest"
     export WANDB_JOB_TYPE="backtest"
-    python backtest.py
+    python backtest.py -v
 
     echo "Step 5: Optimizing Prediction Stocks..."
     export WANDB_MODE=online
@@ -59,7 +59,7 @@ for start_year in $START_YEARS; do
     export WANDB_MODE=online
     export WANDB_RUN_NAME="start-year-${start_year}-model-optimized-predict-stocks-optimized-backtest"
     export WANDB_JOB_TYPE="backtest"
-    python backtest.py
+    python backtest.py -v
 
     echo "Step 7: Archiving configuration files..."
     cp "${DATA_DIR}/prod_data_sampling_proportion.json" "${RESULT_DIR}/prod_data_sampling_proportion.json"

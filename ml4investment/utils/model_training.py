@@ -4,8 +4,10 @@ from collections import defaultdict
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
+import math
 
 import lightgbm as lgb
+from optuna.importance import get_param_importances
 import numpy as np
 import optuna
 import pandas as pd
@@ -252,8 +254,7 @@ def optimize_data_sampling_proportion(
     study = optuna.create_study(
         study_name="Data Sampling Proportion Optimization",
         directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
-        pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
     )
 
     logger.info("Enqueuing trial with all data sampled as a baseline.")
@@ -304,56 +305,25 @@ def optimize_model_features(
     y_train: pd.Series,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
-    categorical_features: list,
+    all_features: list[str],
+    categorical_features: list[str],
     model_hyperparams: dict,
     seed: int,
     verbose: bool = False,
 ) -> list[str]:
-    """Optimize model features using Recursive Feature Elimination (RFE)"""
-    logger.info("Feature Optimization begins...")
-    # train the model to get the initial feature importance and use it as baseline
-    initial_metric_logger_cb = OptimalIterationLogger()
-    optimal_model = lgb.train(
-        model_hyperparams,
-        train_set=lgb.Dataset(
-            X_train, label=y_train, categorical_feature=categorical_features
-        ),
-        valid_sets=[
-            lgb.Dataset(
-                X_validate, label=y_validate, categorical_feature=categorical_features
-            )
-        ],
-        num_boost_round=int(model_hyperparams["num_rounds"]),
-        callbacks=[lgb.log_evaluation(False), initial_metric_logger_cb],
-    )
-    optimal_model.best_iteration = initial_metric_logger_cb.optimal_iteration
-    original_valid_mae = initial_metric_logger_cb.optimal_score
-    optimal_valid_mae = original_valid_mae
-    importance = optimal_model.feature_importance(
-        importance_type="gain", iteration=optimal_model.best_iteration
-    )
-    features = optimal_model.feature_name()
-    sorted_feature_imp_tmp = sorted(zip(importance, features), reverse=True)
-    feature_ranking = list(reversed([f for _, f in sorted_feature_imp_tmp]))
-    optimal_features = feature_ranking.copy()
+    """Optimize model features using Optuna to select a subset."""
+    numerical_features = [f for f in all_features if f not in categorical_features]
 
-    original_feature_number = len(feature_ranking)
-    feature_search_num = settings.FEATURE_SEARCH_LIMIT
+    def objective(trial: optuna.Trial) -> float:
+        candidate_features = categorical_features.copy()
+        for feature in numerical_features:
+            if trial.suggest_float(feature, 0.0, 1.0) >= 0.5:
+                candidate_features.append(feature)
 
-    while feature_search_num > 0:
-        feature_search_num -= 1
-        logger.info(f"Current feature search number: {feature_search_num}")
-
-        feature_to_remove = feature_ranking[0]
-        logger.info(f"Trying to remove feature: '{feature_to_remove}'")
-
-        if feature_to_remove in settings.CATEGORICAL_FEATURES:
-            logger.info(f"Skipping '{feature_to_remove}' feature removal")
-            feature_ranking = feature_ranking[1:]
-            continue
-
-        candidate_features = [f for f in optimal_features if f != feature_to_remove]
-
+        if not candidate_features:
+            logger.warning("Trial selected zero features. Pruning this trial.")
+            return float('inf')
+        
         cur_X_train = X_train[candidate_features]
         cur_X_validate = X_validate[candidate_features]
 
@@ -375,43 +345,43 @@ def optimize_model_features(
         )
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
         cur_valid_mae = cur_metric_logger_cb.optimal_score
-        logger.info(
-            f"Current MAE after removing '{feature_to_remove}': {cur_valid_mae:.6f}"
-        )
+        
+        if verbose:
+            logger.info(f"Trial {trial.number} with {len(candidate_features)} features resulted in MAE: {cur_valid_mae:.6f}")
 
-        if cur_valid_mae <= optimal_valid_mae:
-            logger.info(f"Removing '{feature_to_remove}' improved or kept performance.")
-            optimal_valid_mae = cur_valid_mae
-            optimal_features = candidate_features
-            optimal_model = cur_model
+        return cur_valid_mae
 
-            importance = optimal_model.feature_importance(
-                importance_type="gain", iteration=optimal_model.best_iteration
-            )
-            features = optimal_model.feature_name()
-            sorted_feature_imp_tmp = sorted(zip(importance, features), reverse=True)
-            if verbose:
-                logger.info(
-                    f"Top 10 features by gain importance: {sorted_feature_imp_tmp[:10]}"
-                )
-                logger.info(
-                    f"Worst 10 features by gain importance: {sorted_feature_imp_tmp[-10:]}"
-                )
-            feature_ranking = list(reversed([f for _, f in sorted_feature_imp_tmp]))
+    study = optuna.create_study(
+        study_name="Model Feature Selection Optimization",
+        directions=["minimize"],
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
+    )
+    
+    logger.info("Enqueuing a baseline trial with all features included.")
+    baseline_params = {f"{f}": 0.5 for f in numerical_features}
+    study.enqueue_trial(baseline_params)
 
-            if verbose:
-                logger.info(f"Updated optimal features: {', '.join(optimal_features)}")
-        else:
-            logger.info(
-                f"Removing '{feature_to_remove}' degraded performance. Skip it."
-            )
-            feature_ranking = feature_ranking[1:]
+    # Run the optimization
+    study.optimize(
+        objective,
+        n_trials=settings.FEATURE_SEARCH_LIMIT,
+        timeout=604800,
+    )
+
+    best_params = study.best_trial.params
+    optimal_features = categorical_features.copy()
+    for feature in numerical_features:
+        if best_params.get(feature, 0.0) >= 0.5:
+            optimal_features.append(feature)
+
+    optimal_valid_mae = study.best_trial.value
+    original_feature_number = len(all_features)
 
     logger.info(
-        f"Final selected {len(optimal_features)} features after RFE, select ratio: {len(optimal_features) / original_feature_number:.2f}"
+        f"Final selected {len(optimal_features)} features after Optuna search, select ratio: {len(optimal_features) / original_feature_number:.2f}"
     )
     logger.info(
-        f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}, improvement: {original_valid_mae - optimal_valid_mae:.6f}"
+        f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}"
     )
     if verbose:
         logger.info(f"Optimal features: {optimal_features}")
@@ -478,8 +448,7 @@ def optimize_model_hyperparameters(
     study = optuna.create_study(
         study_name="Model Hyperparameter Optimization",
         directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
-        pruner=optuna.pruners.MedianPruner(n_warmup_steps=2),
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
     )
 
     logger.info("Enqueuing trial with default hyperparameter as a baseline.")
@@ -503,6 +472,28 @@ def optimize_model_hyperparameters(
     study.optimize(
         objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=604800
     )
+
+    if verbose:
+        param_importance = get_param_importances(study)
+        logger.info("Parameter Importances:")
+        for param, importance in param_importance.items():
+            logger.info(f"  - {param}: {importance:.6f}")
+        
+        completed_trials = sorted(
+            study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE]),
+            key=lambda t: t.value if t.value is not None else math.inf
+        )
+        
+        logger.info("Top 5 Best Trials Summary:")
+        for i, trial in enumerate(completed_trials[:5]):
+            logger.info(f"  Trial {trial.number} (Rank {i+1}):")
+            logger.info(f"    - Value (MAE): {trial.value:.6f}")
+            logger.info(f"    - Params:")
+            for param_name, param_value in trial.params.items():
+                if isinstance(param_value, float):
+                    logger.info(f"      - {param_name}: {param_value:.6f}")
+                else:
+                    logger.info(f"      - {param_name}: {param_value}")
 
     optimal_trial = study.best_trial
     optimal_params = optimal_trial.params.copy()

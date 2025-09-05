@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
-    MAX_NUM_PROCESSES: int = 7
+    MAX_NUM_PROCESSES: int = 10
     SEED: int = 42
 
     # Data Fetching
@@ -17,7 +17,7 @@ class Settings:
     DATA_PER_DAY: int = 13
 
     # Feature Engineering
-    CATEGORICAL_FEATURES: List[str] = ["stock_id"]
+    CATEGORICAL_FEATURES: List[str] = ["stock_id", "stock_sector"]
     SECTOR_ID_MAP: Dict[str, int] = {
         "Technology": 1,
         "Healthcare": 2,
@@ -66,7 +66,7 @@ class Settings:
 
     # Prediction
     PREDICT_STOCK_NUMBER: int = 6
-    NUMBER_OF_STOCKS_TO_BUY: int = 2
+    NUMBER_OF_STOCKS_TO_BUY: int = 1
     OPENING_STATUS: set[str] = {"PENDING_ACTIVATION", "WORKING", "OPEN", "QUEUED"}
 
     # Evaluation

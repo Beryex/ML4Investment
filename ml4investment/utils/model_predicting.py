@@ -94,13 +94,10 @@ def update_gains(
     daily_number_of_stock_to_buy = len(predict_top_stock_and_weights_list)
     predict_optimal_stocks = [item[0] for item in predict_top_stock_and_weights_list]
 
-    actual_optimal_stocks = [
-        item[0] for item in sorted_stock_gain_actual[:number_of_stock_to_buy]
-    ]
+    actual_optimal_stocks = [item[0] for item in sorted_stock_gain_actual[:number_of_stock_to_buy]]
     weight_optimal = 1.0 / min(number_of_stock_to_buy, len(actual_optimal_stocks))
     daily_gain_optimal = sum(
-        (1 + y_dict[backtest_day_index][s]) * weight_optimal
-        for s in actual_optimal_stocks
+        (1 + y_dict[backtest_day_index][s]) * weight_optimal for s in actual_optimal_stocks
     )
     gain_optimal *= daily_gain_optimal
 
@@ -123,8 +120,7 @@ def update_gains(
     gain_predict *= daily_gain_predict
 
     daily_gain_actual = sum(
-        (1 + y_dict[backtest_day_index][s]) * w
-        for (s, w) in predict_top_stock_and_weights_list
+        (1 + y_dict[backtest_day_index][s]) * w for (s, w) in predict_top_stock_and_weights_list
     )
     gain_actual *= daily_gain_actual
 
@@ -151,7 +147,7 @@ def get_detailed_static_result(
     verbose: bool = True,
     hide_output: bool = False,
 ) -> tuple[float, float, float, float, float, float, float]:
-    """Display detailed static result of the model predictions within a single function structure"""
+    """Display detailed static result of the model predictions"""
     assert len(X_dict) == len(y_dict), "Length of X_dict and y_dict must be the same"
     day_number = len(X_dict)
 
@@ -178,9 +174,7 @@ def get_detailed_static_result(
         sorted_stock_gain_prediction = sorted(
             y_predict_dict[i].items(), key=lambda x: x[1], reverse=True
         )
-        sorted_stock_gain_actual = sorted(
-            y_dict[i].items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_stock_gain_actual = sorted(y_dict[i].items(), key=lambda x: x[1], reverse=True)
 
         (
             gain_predict,
@@ -277,9 +271,8 @@ def get_detailed_static_result(
             divider=True,
         )
         if not hide_output:
-            logger.info(
-                f"\n{detailed_table.get_string(title=f'Detailed Backtest Result from {start_date} to {end_date}')}"
-            )
+            title_str = f"Detailed Backtest Result from {start_date} to {end_date}"
+            logger.info(f"\n{detailed_table.get_string(title=title_str)}")
 
     else:
         backtest_table = PrettyTable()
@@ -302,9 +295,8 @@ def get_detailed_static_result(
             divider=True,
         )
         if not hide_output:
-            logger.info(
-                f"\n{backtest_table.get_string(title=f'Backtest Result from {start_date} to {end_date}')}"
-            )
+            title_str = f"Backtest Result from {start_date} to {end_date}"
+            logger.info(f"\n{backtest_table.get_string(title=title_str)}")
 
     detailed_static_table = PrettyTable()
     detailed_static_table.field_names = [
@@ -354,7 +346,8 @@ def perform_schwab_trade(
 
         if start_time <= now_et.time() < end_time:
             logger.warning(
-                "Trading can only be executed except market hours to avoid Day Trader Pattern. No trading executed!"
+                "Trading can only be executed except market hours to avoid Day Trader Pattern. "
+                "No trading executed!"
             )
             return
 
@@ -362,23 +355,20 @@ def perform_schwab_trade(
     account_orders = client.account_orders(
         account_hash,
         datetime.datetime.now(datetime.timezone.utc)
-        - datetime.timedelta(
-            days=7
-        ),  # 7 days is sufficient for daily usage, hardcoded here
+        - datetime.timedelta(days=7),  # 7 days is sufficient for daily usage, hardcoded here
         datetime.datetime.now(datetime.timezone.utc),
     ).json()
 
     logger.info("Canceling previous active orders...")
     opening_orders = [
-        order
-        for order in account_orders
-        if order.get("status") in settings.OPENING_STATUS
+        order for order in account_orders if order.get("status") in settings.OPENING_STATUS
     ]
 
     for order in opening_orders:
         order_detail = order["orderLegCollection"][0]
         logger.info(
-            f"Canceling order: {order_detail['instruction']} {order_detail['quantity']} share(s) of {order_detail['instrument']['symbol']}"
+            f"Canceling order: {order_detail['instruction']} {order_detail['quantity']} "
+            f"share(s) of {order_detail['instrument']['symbol']}"
         )
         client.order_cancel(account_hash, order["orderId"])
     logger.info("All previous active orders canceled")
@@ -395,26 +385,22 @@ def perform_schwab_trade(
     for stock in all_stocks_involved:
         if stock in stock_to_buy_in and stock not in account_positions:
             logger.info(f"New stock: Buy {stock_to_buy_in[stock]} share(s) of {stock}")
-            formatted_order = get_schwab_formatted_order(
-                stock, "BUY", stock_to_buy_in[stock]
-            )
+            formatted_order = get_schwab_formatted_order(stock, "BUY", stock_to_buy_in[stock])
             client.order_place(account_hash, formatted_order)
         elif stock in account_positions and stock not in stock_to_buy_in:
-            logger.info(
-                f"Existing stock: Sell {account_positions[stock]} share(s) of {stock}"
-            )
-            formatted_order = get_schwab_formatted_order(
-                stock, "SELL", account_positions[stock]
-            )
+            logger.info(f"Existing stock: Sell {account_positions[stock]} share(s) of {stock}")
+            formatted_order = get_schwab_formatted_order(stock, "SELL", account_positions[stock])
             client.order_place(account_hash, formatted_order)
         else:
             if stock_to_buy_in[stock] == account_positions[stock]:
                 logger.info(
-                    f"Existing stock: No change for {stock}, already holding {account_positions[stock]} share(s)"
+                    f"Existing stock: No change for {stock}, "
+                    f"already holding {account_positions[stock]} share(s)"
                 )
             elif stock_to_buy_in[stock] > account_positions[stock]:
                 logger.info(
-                    f"Existing stock: Buy {stock_to_buy_in[stock] - account_positions[stock]} additional share(s) of {stock}"
+                    f"Existing stock: Buy {stock_to_buy_in[stock] - account_positions[stock]} "
+                    f"additional share(s) of {stock}"
                 )
                 formatted_order = get_schwab_formatted_order(
                     stock, "BUY", stock_to_buy_in[stock] - account_positions[stock]
@@ -422,7 +408,8 @@ def perform_schwab_trade(
                 client.order_place(account_hash, formatted_order)
             else:
                 logger.info(
-                    f"Existing stock: Sell {account_positions[stock] - stock_to_buy_in[stock]} share(s) of {stock}"
+                    f"Existing stock: Sell {account_positions[stock] - stock_to_buy_in[stock]} "
+                    f"share(s) of {stock}"
                 )
                 formatted_order = get_schwab_formatted_order(
                     stock, "SELL", account_positions[stock] - stock_to_buy_in[stock]

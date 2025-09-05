@@ -9,7 +9,7 @@ export WANDB_RUN_GROUP="scaling-law-$(date +%Y%m%d-%H%M%S)"
 echo "WANDB_RUN_GROUP set to: ${WANDB_RUN_GROUP}"
 
 # Define the sample sizes to iterate over
-START_YEARS="2023 2022 2021 2020 2019"
+START_YEARS="2023 2022 2021 2020 2019 2018 2017 2016 2015"
 
 for start_year in $START_YEARS; do
     echo "================================================="
@@ -35,7 +35,7 @@ for start_year in $START_YEARS; do
 
     echo "Step 2: Optimizing Model Features..."
     export WANDB_MODE=disabled
-    python train.py -omf -v
+    python train.py -of -v
 
     echo "Step 3: Optimizing Model Hyperparameters..."
     export WANDB_MODE=online
@@ -62,12 +62,12 @@ for start_year in $START_YEARS; do
     python backtest.py -v
 
     echo "Step 7: Archiving configuration files..."
-    cp "${DATA_DIR}/prod_data_sampling_proportion.json" "${RESULT_DIR}/prod_data_sampling_proportion.json"
-    cp "${DATA_DIR}/prod_model_features.json" "${RESULT_DIR}/prod_model_features.json"
-    cp "${DATA_DIR}/prod_model_hyperparams.json" "${RESULT_DIR}/prod_model_hyperparams.json"
-    cp "${DATA_DIR}/prod_model.model" "${RESULT_DIR}/prod_model.model"
-    cp "${DATA_DIR}/prod_process_feature_config.pkl" "${RESULT_DIR}/prod_process_feature_config.pkl"
-    cp "${CONFIG_DIR}/predict_stocks.json" "${RESULT_DIR}/predict_stocks.json"
+    mv "${DATA_DIR}/prod_data_sampling_proportion.json" "${RESULT_DIR}"
+    mv "${DATA_DIR}/prod_features.json" "${RESULT_DIR}"
+    mv "${DATA_DIR}/prod_model_hyperparams.json" "${RESULT_DIR}"
+    mv "${DATA_DIR}/prod_model.model" "${RESULT_DIR}"
+    mv "${DATA_DIR}/prod_process_feature_config.pkl" "${RESULT_DIR}"
+    mv "${CONFIG_DIR}/predict_stocks.json" "${RESULT_DIR}"
     mv "${LOG_DIR}" "${RESULT_DIR}"
 
     echo ">> Finished experiment for sample_size: $sample_size at $(date)"

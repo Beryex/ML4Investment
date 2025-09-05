@@ -104,6 +104,7 @@ def retry_api_call(func, max_retries=5, base_delay=2.0):
                 raise e
             delay = base_delay * (2**attempt) + random.uniform(0, 1)
             logger.warning(
-                f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)}. Retrying in {delay:.1f}s..."
+                f"API call failed (attempt {attempt + 1}/{max_retries + 1}): {str(e)}. "
+                f"Retrying in {delay:.1f}s..."
             )
             time.sleep(delay)

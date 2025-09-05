@@ -42,7 +42,9 @@ def configure_logging(env: str = "prod", file_name: str = "") -> None:
         "disable_existing_loggers": False,
         "formatters": {
             "verbose": {
-                "format": "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"
+                "format": (
+                    "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d - %(message)s"
+                )
             }
         },
         "handlers": {

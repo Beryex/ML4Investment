@@ -1,17 +1,17 @@
 import json
 import logging
+import math
 from collections import defaultdict
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
-import math
 
 import lightgbm as lgb
-from optuna.importance import get_param_importances
 import numpy as np
 import optuna
 import pandas as pd
 from lightgbm import register_logger
+from optuna.importance import get_param_importances
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
@@ -42,20 +42,17 @@ def model_training(
     metric_logger_cb = OptimalIterationLogger()
     final_model = lgb.train(
         model_hyperparams,
-        train_set=lgb.Dataset(
-            X_train, label=y_train, categorical_feature=categorical_features
-        ),
+        train_set=lgb.Dataset(X_train, label=y_train, categorical_feature=categorical_features),
         valid_sets=[
-            lgb.Dataset(
-                X_validate, label=y_validate, categorical_feature=categorical_features
-            )
+            lgb.Dataset(X_validate, label=y_validate, categorical_feature=categorical_features)
         ],
         num_boost_round=int(model_hyperparams["num_rounds"]),
         callbacks=[lgb.log_evaluation(period=100), metric_logger_cb],
     )
     final_model.best_iteration = metric_logger_cb.optimal_iteration
     logger.info(
-        f"Final model training completed. Optimal iteration on validation set: {final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}"
+        f"Final model training completed. Optimal iteration on validation set: "
+        f"{final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}"
     )
 
     (
@@ -106,9 +103,7 @@ def validate_model(
     """Validate the model on the validation dataset"""
     logger.info("Starting model validation on the provided validation set.")
 
-    stock_actual_gains_collect = defaultdict(
-        lambda: {"total_gain": 1.0, "sample_count": 0}
-    )
+    stock_actual_gains_collect = defaultdict(lambda: {"total_gain": 1.0, "sample_count": 0})
 
     preds = model.predict(X_validate, num_iteration=model.best_iteration)
     assert isinstance(preds, np.ndarray)
@@ -128,16 +123,10 @@ def validate_model(
                 factors_to_multiply = 1 + stock_y_val_numpy[positive_pred_mask]
                 current_stock_gain_prod = float(np.prod(factors_to_multiply))
 
-                stock_actual_gains_collect[stock_code_val]["total_gain"] *= (
-                    current_stock_gain_prod
-                )
-                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(
-                    stock_preds
-                )
+                stock_actual_gains_collect[stock_code_val]["total_gain"] *= current_stock_gain_prod
+                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(stock_preds)
             else:
-                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(
-                    stock_preds
-                )
+                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(stock_preds)
 
     stock_avg_actual_gain_dict = {
         stock_code: data["total_gain"] ** (1 / data["sample_count"])
@@ -147,24 +136,22 @@ def validate_model(
     if optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
         logger.info(
-            f"Using average actual gain as the predict stocks optimization metric with target number {settings.PREDICT_STOCK_NUMBER}"
+            f"Using average actual gain as the predict stocks optimization metric "
+            f"with target number {settings.PREDICT_STOCK_NUMBER}"
         )
         sorted_stock_avg_actual_gain_list = sorted(
             stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True
         )
         predict_stock_list = [
             stock
-            for stock, _ in sorted_stock_avg_actual_gain_list[
-                : settings.PREDICT_STOCK_NUMBER
-            ]
+            for stock, _ in sorted_stock_avg_actual_gain_list[: settings.PREDICT_STOCK_NUMBER]
         ]
         logger.info(
-            f"Selected {len(predict_stock_list)} stocks for prediction: {', '.join(predict_stock_list)}"
+            f"Selected {len(predict_stock_list)} stocks for prediction: "
+            f"{', '.join(predict_stock_list)}"
         )
     else:
-        logger.info(
-            "No predict stocks optimization. Using all target stocks as predict stocks"
-        )
+        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
         predict_stock_list = target_stock_list
 
     (
@@ -206,9 +193,9 @@ def optimize_data_sampling_proportion(
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
     target_stock_list: list[str],
+    given_data_sampling_proportion_pth: str,
     categorical_features: list,
     model_hyperparams: dict,
-    given_data_sampling_proportion_pth: str,
     seed: int = 42,
     verbose: bool = False,
 ) -> dict:
@@ -245,7 +232,9 @@ def optimize_data_sampling_proportion(
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
         cur_valid_mae = cur_metric_logger_cb.optimal_score
         logger.info(
-            f"Current trial model training completed. Optimal iteration on validation set: {cur_model.best_iteration} with lowest MAE: {cur_valid_mae}"
+            f"Current trial model training completed. "
+            f"Optimal iteration on validation set: {cur_model.best_iteration} "
+            f"with lowest MAE: {cur_valid_mae}"
         )
 
         return cur_valid_mae
@@ -254,23 +243,16 @@ def optimize_data_sampling_proportion(
     study = optuna.create_study(
         study_name="Data Sampling Proportion Optimization",
         directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
     )
 
     logger.info("Enqueuing trial with all data sampled as a baseline.")
     uniform_params = {stock: 1.0 for stock in target_stock_list}
     study.enqueue_trial(uniform_params)
 
-    if (
-        given_data_sampling_proportion_pth
-        and Path(given_data_sampling_proportion_pth).exists()
-    ):
-        logger.info(
-            "Enqueuing trial with given sampling proportion as another baseline."
-        )
-        given_data_sampling_proportion = json.load(
-            open(given_data_sampling_proportion_pth, "r")
-        )
+    if given_data_sampling_proportion_pth and Path(given_data_sampling_proportion_pth).exists():
+        logger.info("Enqueuing trial with given sampling proportion as another baseline.")
+        given_data_sampling_proportion = json.load(open(given_data_sampling_proportion_pth, "r"))
         study.enqueue_trial(given_data_sampling_proportion)
 
     study.optimize(
@@ -300,13 +282,14 @@ def optimize_data_sampling_proportion(
     return optimal_data_sampling_proportion
 
 
-def optimize_model_features(
+def optimize_features(
     X_train: pd.DataFrame,
     y_train: pd.Series,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
     all_features: list[str],
     categorical_features: list[str],
+    given_features_pth: str,
     model_hyperparams: dict,
     seed: int,
     verbose: bool = False,
@@ -322,8 +305,8 @@ def optimize_model_features(
 
         if not candidate_features:
             logger.warning("Trial selected zero features. Pruning this trial.")
-            return float('inf')
-        
+            return float("inf")
+
         cur_X_train = X_train[candidate_features]
         cur_X_validate = X_validate[candidate_features]
 
@@ -345,21 +328,35 @@ def optimize_model_features(
         )
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
         cur_valid_mae = cur_metric_logger_cb.optimal_score
-        
+
         if verbose:
-            logger.info(f"Trial {trial.number} with {len(candidate_features)} features resulted in MAE: {cur_valid_mae:.6f}")
+            logger.info(
+                f"Trial {trial.number} with {len(candidate_features)} features "
+                f"resulted in MAE: {cur_valid_mae:.6f}"
+            )
 
         return cur_valid_mae
 
     study = optuna.create_study(
         study_name="Model Feature Selection Optimization",
         directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
     )
-    
+
     logger.info("Enqueuing a baseline trial with all features included.")
-    baseline_params = {f"{f}": 0.5 for f in numerical_features}
-    study.enqueue_trial(baseline_params)
+    baseline_features = {f"{f}": 0.5 for f in numerical_features}
+    study.enqueue_trial(baseline_features)
+
+    if given_features_pth and Path(given_features_pth).exists():
+        logger.info("Enqueuing trial with given features as another baseline.")
+        given_model_features = json.load(open(given_features_pth, "r"))["features"]
+        baseline_features = {}
+        for feature in numerical_features:
+            if feature in given_model_features:
+                baseline_features[feature] = 1.0
+            else:
+                baseline_features[feature] = 0.0
+        study.enqueue_trial(baseline_features)
 
     # Run the optimization
     study.optimize(
@@ -378,11 +375,10 @@ def optimize_model_features(
     original_feature_number = len(all_features)
 
     logger.info(
-        f"Final selected {len(optimal_features)} features after Optuna search, select ratio: {len(optimal_features) / original_feature_number:.2f}"
+        f"Final selected {len(optimal_features)} features after Optuna search, "
+        f"select ratio: {len(optimal_features) / original_feature_number:.2f}"
     )
-    logger.info(
-        f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}"
-    )
+    logger.info(f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}")
     if verbose:
         logger.info(f"Optimal features: {optimal_features}")
 
@@ -405,7 +401,7 @@ def optimize_model_hyperparameters(
     cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
     cur_train_fixed_config.update({"seed": seed})
     cur_train_fixed_config.update(
-        {"num_threads": min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)}
+        {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
     )
 
     def objective(trial: optuna.Trial) -> float:
@@ -439,7 +435,9 @@ def optimize_model_hyperparameters(
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
         cur_valid_mae = cur_metric_logger_cb.optimal_score
         logger.info(
-            f"Current trial model training completed. Optimal iteration on validation set: {cur_model.best_iteration} with lowest MAE: {cur_valid_mae}"
+            f"Current trial model training completed. "
+            f"Optimal iteration on validation set: {cur_model.best_iteration} "
+            f"with lowest MAE: {cur_valid_mae}"
         )
 
         return cur_valid_mae
@@ -448,7 +446,7 @@ def optimize_model_hyperparameters(
     study = optuna.create_study(
         study_name="Model Hyperparameter Optimization",
         directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True)
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
     )
 
     logger.info("Enqueuing trial with default hyperparameter as a baseline.")
@@ -469,26 +467,24 @@ def optimize_model_hyperparameters(
         given_model_hyperparams = json.load(open(given_model_hyperparams_pth, "r"))
         study.enqueue_trial(given_model_hyperparams)
 
-    study.optimize(
-        objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=604800
-    )
+    study.optimize(objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=604800)
 
     if verbose:
         param_importance = get_param_importances(study)
         logger.info("Parameter Importances:")
         for param, importance in param_importance.items():
             logger.info(f"  - {param}: {importance:.6f}")
-        
+
         completed_trials = sorted(
             study.get_trials(deepcopy=False, states=[optuna.trial.TrialState.COMPLETE]),
-            key=lambda t: t.value if t.value is not None else math.inf
+            key=lambda t: t.value if t.value is not None else math.inf,
         )
-        
+
         logger.info("Top 5 Best Trials Summary:")
         for i, trial in enumerate(completed_trials[:5]):
-            logger.info(f"  Trial {trial.number} (Rank {i+1}):")
+            logger.info(f"  Trial {trial.number} (Rank {i + 1}):")
             logger.info(f"    - Value (MAE): {trial.value:.6f}")
-            logger.info(f"    - Params:")
+            logger.info("    - Params:")
             for param_name, param_value in trial.params.items():
                 if isinstance(param_value, float):
                     logger.info(f"      - {param_name}: {param_value:.6f}")

@@ -47,9 +47,7 @@ def predict(
 
     daily_features_data = calculate_features(predict_data)
 
-    X_predict_dict = process_features_for_predict(
-        daily_features_data, process_feature_config
-    )
+    X_predict_dict = process_features_for_predict(daily_features_data, process_feature_config)
 
     for stock, data in X_predict_dict.items():
         X_predict_dict[stock] = data[selected_features]
@@ -61,9 +59,7 @@ def predict(
     predict_date = predict_dates.pop()
     logger.info(f"Predicting based on data on {predict_date}")
 
-    feature_nums = {
-        len(list(X_predict.columns)) for X_predict in X_predict_dict.values()
-    }
+    feature_nums = {len(list(X_predict.columns)) for X_predict in X_predict_dict.values()}
     if len(feature_nums) != 1:
         logger.error(f"Feature number mismatched: {feature_nums}")
         raise ValueError(f"Feature number mismatched: {feature_nums}")
@@ -86,9 +82,7 @@ def predict(
     predict_table.field_names = field_names
     wandb_table = wandb.Table(columns=field_names)
 
-    sorted_stock_gain_prediction = sorted(
-        predictions.items(), key=lambda x: x[1], reverse=True
-    )
+    sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
     predict_top_stock_and_weights_list = get_predict_top_stocks_and_weights(
         sorted_stock_gain_prediction
     )
@@ -107,9 +101,7 @@ def predict(
     if actual_number_selected == 0:
         logger.info("No stocks were recommended today (no positive predicted returns)")
     else:
-        logger.info(
-            f"Give recommendation based on total investment value: ${total_balance:.2f}"
-        )
+        logger.info(f"Give recommendation based on total investment value: ${total_balance:.2f}")
 
         for stock, weight in predict_top_stock_and_weights_list:
             recommended_investment_value = total_balance * weight
@@ -144,7 +136,11 @@ def predict(
 
     if args.verbose or actual_number_selected > 0:
         logger.info(
-            f"\n{predict_table.get_string(title=f'Suggested top {actual_number_selected} stocks to buy:')}"
+            f"\n{
+                predict_table.get_string(
+                    title=f'Suggested top {actual_number_selected} stocks to buy:'
+                )
+            }"
         )
 
     wandb.log({"daily_predictions": wandb_table})
@@ -159,15 +155,9 @@ def predict(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--train_stocks", "-ts", type=str, default="config/train_stocks.json"
-    )
-    parser.add_argument(
-        "--predict_stocks", "-ps", type=str, default="config/predict_stocks.json"
-    )
-    parser.add_argument(
-        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl"
-    )
+    parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
+    parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl")
 
     parser.add_argument(
         "--process_feature_config_pth",
@@ -175,9 +165,7 @@ if __name__ == "__main__":
         type=str,
         default="data/prod_process_feature_config.pkl",
     )
-    parser.add_argument(
-        "--features_pth", "-fp", type=str, default="data/prod_model_features.json"
-    )
+    parser.add_argument("--features_pth", "-fp", type=str, default="data/prod_features.json")
     parser.add_argument("--model_pth", "-mp", type=str, default="data/prod_model.model")
 
     parser.add_argument("--perform_trading", "-pt", action="store_true", default=False)

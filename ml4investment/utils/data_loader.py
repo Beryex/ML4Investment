@@ -25,9 +25,7 @@ def get_available_stocks() -> list[str]:
     logger.info(f"Read {len(df)} stocks from the source")
 
     logger.info(f"Filtering stocks with market cap > {settings.MIN_MARKET_CAP}")
-    available_stocks_list = df[df["marketcap"] > settings.MIN_MARKET_CAP][
-        "Symbol"
-    ].tolist()
+    available_stocks_list = df[df["marketcap"] > settings.MIN_MARKET_CAP]["Symbol"].tolist()
     logger.info(f"Filtered down to {len(available_stocks_list)} stocks")
 
     logger.info(
@@ -53,9 +51,7 @@ def process_raw_data(
         return None, msg
 
     if not isinstance(cur_processed_df.index, pd.DatetimeIndex):
-        msg.append(
-            f"Stock {stock}: Index is not DatetimeIndex after filtering. Skip it"
-        )
+        msg.append(f"Stock {stock}: Index is not DatetimeIndex after filtering. Skip it")
         return None, msg
 
     closing_auction_mask = cur_processed_df.index.time == market_close
@@ -91,9 +87,7 @@ def process_raw_data(
     """ Filter non-trading dates """
     assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
     unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
-    schedule_in_range = nyse.schedule(
-        start_date=unique_dates.min(), end_date=unique_dates.max()
-    )
+    schedule_in_range = nyse.schedule(start_date=unique_dates.min(), end_date=unique_dates.max())
     assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
     trading_days_set = set(pd.to_datetime(schedule_in_range.index.date))
 
@@ -103,25 +97,20 @@ def process_raw_data(
     if not non_trading_dates_found.empty:
         last_non_trading_date = non_trading_dates_found.max().date()
         msg.append(
-            f"Stock {stock}: Found non-trading date {last_non_trading_date}. Removing data on or before this date."
+            f"Stock {stock}: Found non-trading date {last_non_trading_date}. "
+            f"Removing data on or before this date."
         )
-        cur_processed_df = cur_processed_df[
-            cur_processed_df.index.date > last_non_trading_date
-        ]
+        cur_processed_df = cur_processed_df[cur_processed_df.index.date > last_non_trading_date]
 
     if cur_processed_df.empty:
-        msg.append(
-            f"Stock {stock}: No data remains after removing non-trading dates. Skip it"
-        )
+        msg.append(f"Stock {stock}: No data remains after removing non-trading dates. Skip it")
         return None, msg
 
     """ Filter missing trading dates """
     assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
     unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
     unique_dates_set = set(unique_dates)
-    schedule_in_range = nyse.schedule(
-        start_date=unique_dates.min(), end_date=unique_dates.max()
-    )
+    schedule_in_range = nyse.schedule(start_date=unique_dates.min(), end_date=unique_dates.max())
     assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
     all_trading_days_in_range = set(pd.to_datetime(schedule_in_range.index.date))
 
@@ -129,11 +118,10 @@ def process_raw_data(
     if missing_dates:
         last_missing_date = max(missing_dates).date()
         msg.append(
-            f"Stock {stock}: Found missing trading date up to {last_missing_date}. Removing data on or before this date."
+            f"Stock {stock}: Found missing trading date up to {last_missing_date}. "
+            f"Removing data on or before this date."
         )
-        cur_processed_df = cur_processed_df[
-            cur_processed_df.index.date > last_missing_date
-        ]
+        cur_processed_df = cur_processed_df[cur_processed_df.index.date > last_missing_date]
 
     if cur_processed_df.empty:
         msg.append(
@@ -143,24 +131,24 @@ def process_raw_data(
 
     """ Filter for valid trading days """
     assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
-    daily_first_timestamps = cur_processed_df.groupby(
-        cur_processed_df.index.date
-    ).apply(lambda group: group.index.min())
+    daily_first_timestamps = cur_processed_df.groupby(cur_processed_df.index.date).apply(
+        lambda group: group.index.min()
+    )
     invalid_start_mask = daily_first_timestamps.dt.time != market_open
     invalid_start_days = daily_first_timestamps[invalid_start_mask]
 
     if not invalid_start_days.empty:
         last_invalid_date = invalid_start_days.index.max()
         msg.append(
-            f"Stock {stock}: Found day {last_invalid_date} with invalid start time. Removing data on or before this date."
+            f"Stock {stock}: Found day {last_invalid_date} with invalid start time. "
+            f"Removing data on or before this date."
         )
-        cur_processed_df = cur_processed_df[
-            cur_processed_df.index.date > last_invalid_date
-        ]
+        cur_processed_df = cur_processed_df[cur_processed_df.index.date > last_invalid_date]
 
     if cur_processed_df.empty:
         msg.append(
-            f"Stock {stock}: No valid data remains after removing days with incorrect start times. Skip it"
+            f"Stock {stock}: No valid data remains after removing days "
+            f"with incorrect start times. Skip it"
         )
         return None, msg
 
@@ -173,20 +161,17 @@ def process_raw_data(
         padding_rows = []
         for day, actual_count in short_days.items():
             msg.append(
-                f"Stock {stock}: Found day {day} with {actual_count} data points. Padding to {settings.DATA_PER_DAY} points."
+                f"Stock {stock}: Found day {day} with {actual_count} data points. "
+                f"Padding to {settings.DATA_PER_DAY} points."
             )
             num_to_pad = settings.DATA_PER_DAY - actual_count
 
-            last_row_of_day = cur_processed_df[cur_processed_df.index.date == day].iloc[
-                -1
-            ]
+            last_row_of_day = cur_processed_df[cur_processed_df.index.date == day].iloc[-1]
             last_close = last_row_of_day["Close"]
             last_timestamp = last_row_of_day.name
 
             for i in range(num_to_pad):
-                new_timestamp = last_timestamp + pd.Timedelta(
-                    minutes=(i + 1) * interval_mins
-                )
+                new_timestamp = last_timestamp + pd.Timedelta(minutes=(i + 1) * interval_mins)
                 padding_rows.append(
                     {
                         "datetime": new_timestamp,
@@ -236,9 +221,7 @@ def fetch_one_stock_from_schwab(
         return (
             stock,
             None,
-            [
-                f"Failed to fetch data for stock {stock} after retries: {str(e)}. Skip it"
-            ],
+            [f"Failed to fetch data for stock {stock} after retries: {str(e)}. Skip it"],
         )
 
     assert cur_raw_data is not None
@@ -280,7 +263,7 @@ def fetch_data_from_schwab(
     fetched_data: dict[str, pd.DataFrame] = {}
 
     tasks = [(stock, client, start_date, end_date, interval_mins) for stock in stocks]
-    num_processes = min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)
+    num_processes = min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)
 
     with Pool(processes=num_processes) as pool:
         results_iterator = pool.imap(fetch_one_stock_from_schwab, tasks)
@@ -349,9 +332,7 @@ def load_local_data(
                         file_path = base_dir_path / year_str / file_name
 
                         try:
-                            df_year = pd.read_csv(
-                                file_path, index_col=0, parse_dates=True
-                            )
+                            df_year = pd.read_csv(file_path, index_col=0, parse_dates=True)
                             data_list.append(df_year)
                             missing_year = False
                         except FileNotFoundError:
@@ -407,9 +388,7 @@ def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]
             merged_df = pd.concat([existing_data[stock], new_data[stock]])
             merged_df = merged_df[~merged_df.index.duplicated(keep="last")].sort_index()
             merged_len = len(merged_df)
-            logger.info(
-                f"Merging existing stock: {stock} with {merged_len - original_len}"
-            )
+            logger.info(f"Merging existing stock: {stock} with {merged_len - original_len}")
         else:
             merged_df = new_data[stock]
             logger.info(f"Adding new stock: {stock} with {len(new_data[stock])} rows")
@@ -442,7 +421,8 @@ def sample_training_data(
 
         if cur_stock_combined_orig.empty:
             logger.warning(
-                f"Stock '{stock}' specified in sampling_proportion has no data in X_train. Skipping."
+                f"Stock '{stock}' specified in sampling_proportion has no data in X_train. "
+                f"Skip it."
             )
             continue
 
@@ -477,9 +457,7 @@ def sample_training_data(
     assert isinstance(shuffled_X, pd.DataFrame)
     assert isinstance(shuffled_y, pd.Series)
 
-    logger.info(
-        f"Successfully sampled training data. New training set size: {len(shuffled_X)}"
-    )
+    logger.info(f"Successfully sampled training data. New training set size: {len(shuffled_X)}")
     return shuffled_X, shuffled_y
 
 
@@ -498,9 +476,7 @@ def get_stock_sector_id_mapping(available_stocks: list) -> dict[str, int]:
             stock_info = yf.Ticker(stock).info
             sector = stock_info.get("sector", "Others")
             market_cap = stock_info.get("marketCap", 0)
-            info_list.append(
-                {"symbol": stock, "sector": sector, "market_cap": market_cap}
-            )
+            info_list.append({"symbol": stock, "sector": sector, "market_cap": market_cap})
 
     grouped_by_sector = defaultdict(list)
     for stock_data in info_list:
@@ -512,8 +488,6 @@ def get_stock_sector_id_mapping(available_stocks: list) -> dict[str, int]:
             stocks_in_sector, key=lambda x: x.get("market_cap", 0), reverse=True
         )
         for stock in sorted_stocks:
-            stock_sectors_id_mapping[stock["symbol"]] = settings.SECTOR_ID_MAP.get(
-                sector, -1
-            )
+            stock_sectors_id_mapping[stock["symbol"]] = settings.SECTOR_ID_MAP.get(sector, -1)
 
     return stock_sectors_id_mapping

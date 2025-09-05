@@ -41,27 +41,22 @@ def backtest(
 
     daily_features_data = calculate_features(backtest_data)
 
-    X_backtest_dict, y_backtest_dict, backtest_day_number = (
-        process_features_for_backtest(
-            daily_features_data, process_feature_config, predict_stock_list
-        )
+    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(
+        daily_features_data, process_feature_config, predict_stock_list
     )
 
     for i in range(backtest_day_number):
         for stock, data in X_backtest_dict[i].items():
             X_backtest_dict[i][stock] = data[selected_features]
 
-    backtest_oldest_dates = {
-        X_backtest.index.min() for X_backtest in X_backtest_dict[0].values()
-    }
+    backtest_oldest_dates = {X_backtest.index.min() for X_backtest in X_backtest_dict[0].values()}
     if len(backtest_oldest_dates) != 1:
         logger.error("Oldest backtest date mismatched")
         raise ValueError("Oldest backtest date mismatched")
     backtest_oldest_date = backtest_oldest_dates.pop()
 
     backtest_newest_dates = {
-        X_backtest.index.max()
-        for X_backtest in X_backtest_dict[backtest_day_number - 1].values()
+        X_backtest.index.max() for X_backtest in X_backtest_dict[backtest_day_number - 1].values()
     }
     if len(backtest_newest_dates) != 1:
         logger.error("Newest backtest date mismatched")
@@ -71,9 +66,7 @@ def backtest(
     logger.info(f"Oldest date in backtest data: {backtest_oldest_date}")
     logger.info(f"Newest date in backtest data: {backtest_newest_date}")
 
-    feature_nums = {
-        len(list(X_predict.columns)) for X_predict in X_backtest_dict[0].values()
-    }
+    feature_nums = {len(list(X_predict.columns)) for X_predict in X_backtest_dict[0].values()}
     if len(feature_nums) != 1:
         logger.error(f"Feature number mismatched: {feature_nums}")
         raise ValueError(f"Feature number mismatched: {feature_nums}")
@@ -118,15 +111,9 @@ def backtest(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--train_stocks", "-ts", type=str, default="config/train_stocks.json"
-    )
-    parser.add_argument(
-        "--predict_stocks", "-ps", type=str, default="config/predict_stocks.json"
-    )
-    parser.add_argument(
-        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl"
-    )
+    parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
+    parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl")
 
     parser.add_argument(
         "--process_feature_config_pth",
@@ -134,9 +121,7 @@ if __name__ == "__main__":
         type=str,
         default="data/prod_process_feature_config.pkl",
     )
-    parser.add_argument(
-        "--features_pth", "-fp", type=str, default="data/prod_model_features.json"
-    )
+    parser.add_argument("--features_pth", "-fp", type=str, default="data/prod_features.json")
     parser.add_argument("--model_pth", "-mp", type=str, default="data/prod_model.model")
 
     parser.add_argument("--verbose", "-v", action="store_true", default=False)

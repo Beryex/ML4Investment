@@ -26,19 +26,13 @@ def fetch_data():
     if args.get_available_stocks:
         available_stocks_list = get_available_stocks()
     else:
-        available_stocks_list = json.load(open(args.available_stocks, "r"))[
-            "available_stocks"
-        ]
-    logger.info(
-        f"Start fetching data for given stocks: {available_stocks_list[:100]}..."
-    )
+        available_stocks_list = json.load(open(args.available_stocks, "r"))["available_stocks"]
+    logger.info(f"Start fetching data for given stocks: {available_stocks_list[:100]}...")
 
     """ Fetch new data """
     if args.load_local_data:
         logger.info(f"Load local data from {args.local_data_pth} for the given stocks")
-        fetched_data = load_local_data(
-            available_stocks_list, base_dir=args.local_data_pth
-        )
+        fetched_data = load_local_data(available_stocks_list, base_dir=args.local_data_pth)
     else:
         logger.info("Fetch data from Schwab for the given stocks")
         client, account_hash = setup_schwab_client()
@@ -56,9 +50,7 @@ def fetch_data():
 
     logger.info("--- Stats for fetched data ---")
     logger.info(f"  Number of stocks: {len(fetched_data)}")
-    logger.info(
-        f"  Number of data points: {sum(len(df) for df in fetched_data.values())}"
-    )
+    logger.info(f"  Number of data points: {sum(len(df) for df in fetched_data.values())}")
     logger.info(
         f"  Overall earliest data timestamp: {min(df.index.min() for df in fetched_data.values())}"
     )
@@ -68,9 +60,7 @@ def fetch_data():
 
     logger.info("--- Stats for overall data after merging with exist data ---")
     logger.info(f"  Number of stocks: {len(merged_data)}")
-    logger.info(
-        f"  Number of data points: {sum(len(df) for df in merged_data.values())}"
-    )
+    logger.info(f"  Number of data points: {sum(len(df) for df in merged_data.values())}")
     logger.info(
         f"  Overall earliest data timestamp: {min(df.index.min() for df in merged_data.values())}"
     )
@@ -95,18 +85,14 @@ def fetch_data():
         os.makedirs(os.path.dirname(settings.STOCK_SECTOR_ID_MAP_PTH), exist_ok=True)
         with open(settings.STOCK_SECTOR_ID_MAP_PTH, "w") as f:
             json.dump(stock_sectors_id_mapping, f, indent=4)
-        logger.info(
-            f"Stock sectors id mapping saved to {settings.STOCK_SECTOR_ID_MAP_PTH}"
-        )
+        logger.info(f"Stock sectors id mapping saved to {settings.STOCK_SECTOR_ID_MAP_PTH}")
 
     logger.info("Fetching data completed.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--available_stocks", type=str, default="config/available_stocks.json"
-    )
+    parser.add_argument("--available_stocks", type=str, default="config/available_stocks.json")
     parser.add_argument(
         "--get_available_stocks",
         "-gas",
@@ -118,9 +104,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--load_local_data", "-lld", action="store_true", default=False)
     parser.add_argument("--local_data_pth", "-ldp", type=str)
-    parser.add_argument(
-        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl"
-    )
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl")
     parser.add_argument(
         "--get_stock_sector_id_mapping",
         "-gssim",

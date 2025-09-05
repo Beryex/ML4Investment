@@ -33,14 +33,10 @@ def calculate_one_stock_features(
     df["Returns_1h"] = df["Close"].pct_change(fill_method=None)
     df["Return_abs"] = df["Returns_1h"].abs()
     df["Intraday_Range"] = (df["High"] - df["Low"]) / df["Open"]
-    df["Price_Efficiency"] = (df["Close"] - df["Open"]) / (
-        df["High"] - df["Low"] + EPSILON
-    )
+    df["Price_Efficiency"] = (df["Close"] - df["Open"]) / (df["High"] - df["Low"] + EPSILON)
     df["High_Low_Ratio"] = df["High"] / (df["Low"] + EPSILON)
     df["Close_Open_Ratio"] = df["Close"] / (df["Open"] + EPSILON)
-    df["Body_Range_Ratio"] = (df["Close"] - df["Open"]).abs() / (
-        df["High"] - df["Low"] + EPSILON
-    )
+    df["Body_Range_Ratio"] = (df["Close"] - df["Open"]).abs() / (df["High"] - df["Low"] + EPSILON)
     df["Upper_Shadow"] = (df["High"] - df[["Open", "Close"]].max(axis=1)) / (
         df["High"] - df["Low"] + EPSILON
     )
@@ -52,9 +48,7 @@ def calculate_one_stock_features(
 
     # === Technical Indicators ===
     df["RSI_91"] = _calculate_rsi(df["Close"], settings.DATA_PER_DAY * 14)
-    df["ATR_91"] = _calculate_atr(
-        df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY * 14
-    )
+    df["ATR_91"] = _calculate_atr(df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY * 14)
     df["Bollinger_Width"] = (
         df["Close"].rolling(settings.DATA_PER_DAY * 3).std()
         / df["Close"].rolling(settings.DATA_PER_DAY * 3).mean()
@@ -63,12 +57,8 @@ def calculate_one_stock_features(
 
     df["RSI_7"] = _calculate_rsi(df["Close"], settings.DATA_PER_DAY)
     df["RSI_21"] = _calculate_rsi(df["Close"], settings.DATA_PER_DAY * 3)
-    df["ATR_7"] = _calculate_atr(
-        df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY
-    )
-    df["ATR_21"] = _calculate_atr(
-        df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY * 3
-    )
+    df["ATR_7"] = _calculate_atr(df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY)
+    df["ATR_21"] = _calculate_atr(df["High"], df["Low"], df["Close"], settings.DATA_PER_DAY * 3)
     df["MA_7"] = df["Close"].rolling(settings.DATA_PER_DAY).mean()
     df["MA_21"] = df["Close"].rolling(settings.DATA_PER_DAY * 3).mean()
     df["MA_Diff_7_21"] = df["MA_7"] - df["MA_21"]
@@ -77,9 +67,7 @@ def calculate_one_stock_features(
 
     df["ADX_14h"] = _calculate_adx(df["High"], df["Low"], df["Close"], timeperiod=14)
     df["CCI_14h"] = _calculate_cci(df["High"], df["Low"], df["Close"], timeperiod=14)
-    df["MFI_14h"] = _calculate_mfi(
-        df["High"], df["Low"], df["Close"], df["Volume"], timeperiod=14
-    )
+    df["MFI_14h"] = _calculate_mfi(df["High"], df["Low"], df["Close"], df["Volume"], timeperiod=14)
     upper, middle, lower = _calculate_bbands(df["Close"], timeperiod=20, nbdev=2)
     df["BB_Upper"] = upper
     df["BB_Lower"] = lower
@@ -92,17 +80,13 @@ def calculate_one_stock_features(
     df["Volume_Spike"] = df["Volume"] / (
         df["Volume"].rolling(settings.DATA_PER_DAY * 3).mean() + EPSILON
     )
-    df["Price_Volume_Correlation"] = (
-        df["Close"].rolling(settings.DATA_PER_DAY).corr(df["Volume"])
-    )
+    df["Price_Volume_Correlation"] = df["Close"].rolling(settings.DATA_PER_DAY).corr(df["Volume"])
     df["Price_Volume_Correlation"] = df["Price_Volume_Correlation"].replace(
         [np.inf, -np.inf], np.nan
     )
     df["Price_Volume_Correlation"] = df["Price_Volume_Correlation"].fillna(0)
     df["Volume_Change_Ratio"] = df["Volume"].pct_change(fill_method=None)
-    df["Volume_Change_Ratio"] = df["Volume_Change_Ratio"].replace(
-        [np.inf, -np.inf], np.nan
-    )
+    df["Volume_Change_Ratio"] = df["Volume_Change_Ratio"].replace([np.inf, -np.inf], np.nan)
     df["Signed_Volume"] = np.sign(df["Returns_1h"]) * df["Volume"]
     df["Signed_Volume_MA7"] = df["Signed_Volume"].rolling(settings.DATA_PER_DAY).mean()
 
@@ -112,15 +96,13 @@ def calculate_one_stock_features(
     )
     df["Flow_Intensity"] = df["Flow_Intensity"].rolling(3).mean()
     df["Direction_Consistency"] = (
-        (np.sign(df["Close"].diff()) == np.sign(df["Close"].diff().shift(1)))
-        .rolling(3)
-        .sum()
+        (np.sign(df["Close"].diff()) == np.sign(df["Close"].diff().shift(1))).rolling(3).sum()
     )
 
     # === Momentum Indicators ===
-    df["Momentum_Accel"] = df["Close"].pct_change(3, fill_method=None) - df[
-        "Close"
-    ].pct_change(settings.DATA_PER_DAY, fill_method=None)
+    df["Momentum_Accel"] = df["Close"].pct_change(3, fill_method=None) - df["Close"].pct_change(
+        settings.DATA_PER_DAY, fill_method=None
+    )
     df["Vol_Ratio"] = df["Close"].rolling(settings.DATA_PER_DAY).std() / (
         df["Close"].rolling(settings.DATA_PER_DAY * 5).std() + EPSILON
     )
@@ -140,9 +122,7 @@ def calculate_one_stock_features(
     df["VWAP_Cumulative"] = (
         df["Volume"] * (df["High"] + df["Low"] + df["Close"]) / 3
     ).cumsum() / (df["Volume"].cumsum() + EPSILON)
-    df["VWAP_Deviation_Daily"] = (df["Close"] - df["VWAP_Daily"]) / (
-        df["VWAP_Daily"] + EPSILON
-    )
+    df["VWAP_Deviation_Daily"] = (df["Close"] - df["VWAP_Daily"]) / (df["VWAP_Daily"] + EPSILON)
     df["VWAP_Deviation_Cumulative"] = (df["Close"] - df["VWAP_Cumulative"]) / (
         df["VWAP_Cumulative"] + EPSILON
     )
@@ -189,9 +169,7 @@ def calculate_one_stock_features(
     df["Late_Momentum"] = df["Returns_1h"].where(late_afternoon_mask).rolling(2).mean()
 
     end_mask = (df["Hour_Index"] >= 1430) & (df["Hour_Index"] <= 1530)
-    end_volume_sum_daily = (
-        df["Volume"].where(end_mask, 0).groupby(df.index.date).transform("sum")
-    )
+    end_volume_sum_daily = df["Volume"].where(end_mask, 0).groupby(df.index.date).transform("sum")
     total_volume_daily = df["Volume"].groupby(df.index.date).transform("sum")
     df["End_Volume_Ratio"] = end_volume_sum_daily / (total_volume_daily + EPSILON)
 
@@ -224,7 +202,7 @@ def calculate_one_stock_features(
         "Hourly_Open_Gap": ["mean", "std"],
         "Return_abs": ["sum", "mean"],
         "Intraday_Range": ["last", "mean"],
-        "Price_Efficiency": ["mean", "last"],
+        "Price_Efficiency": ["mean", "last", "std"],
         "High_Low_Ratio": ["mean", "last"],
         "Close_Open_Ratio": ["mean", "last"],
         "Body_Range_Ratio": ["mean", "last"],
@@ -279,23 +257,21 @@ def calculate_one_stock_features(
         "Last_Hour_Volume_Ratio": "last",
         "Price_Up_Vol_Down_Div": ["sum", "mean"],
         "Price_Down_Vol_Up_Div": ["sum", "mean"],
-        "Price_Efficiency": ["mean", "std"],
     }
 
     nyse = mcal.get_calendar("NYSE")
     unique_dates_idx = pd.to_datetime(pd.Series(df.index.normalize().date).unique())
 
-    schedule = nyse.schedule(
-        start_date=unique_dates_idx.min(), end_date=unique_dates_idx.max()
-    )
+    schedule = nyse.schedule(start_date=unique_dates_idx.min(), end_date=unique_dates_idx.max())
     assert isinstance(schedule.index, pd.DatetimeIndex)
 
     correct_trading_dates = schedule.index.date
-    # here will introduce holidays caused by bug in CustomBusinessDay, so we add these fix code below
+    # here will introduce holidays caused by bug in CustomBusinessDay,
+    # so we add these fix code below
     buggy_trading_day_offset = CustomBusinessDay(calendar=nyse)  # type: ignore
-    daily_df_aggregated_potentially_incorrect = df.resample(
-        buggy_trading_day_offset
-    ).agg(aggregation_rules)  # type: ignore
+    daily_df_aggregated_potentially_incorrect = df.resample(buggy_trading_day_offset).agg(
+        aggregation_rules  # type: ignore
+    )
     index_dates_array = daily_df_aggregated_potentially_incorrect.index.normalize().date  # type: ignore
     correct_rows_mask = np.isin(index_dates_array, correct_trading_dates)
     daily_df_filtered = daily_df_aggregated_potentially_incorrect[correct_rows_mask]
@@ -328,22 +304,16 @@ def calculate_one_stock_features(
         daily_df["Volume_sum"].rolling(5).mean() + EPSILON
     )
     daily_df["MA5_Deviation"] = (
-        daily_df["Close_last"] / (daily_df["Close_last"].rolling(5).mean() + EPSILON)
-        - 1
+        daily_df["Close_last"] / (daily_df["Close_last"].rolling(5).mean() + EPSILON) - 1
     )
     daily_df["MA20_Deviation"] = (
-        daily_df["Close_last"] / (daily_df["Close_last"].rolling(20).mean() + EPSILON)
-        - 1
+        daily_df["Close_last"] / (daily_df["Close_last"].rolling(20).mean() + EPSILON) - 1
     )
 
     daily_df["MA10"] = daily_df["Close_last"].rolling(10).mean()
     daily_df["MA50"] = daily_df["Close_last"].rolling(50).mean()
-    daily_df["MA10_Deviation"] = (
-        daily_df["Close_last"] / (daily_df["MA10"] + EPSILON) - 1
-    )
-    daily_df["MA50_Deviation"] = (
-        daily_df["Close_last"] / (daily_df["MA50"] + EPSILON) - 1
-    )
+    daily_df["MA10_Deviation"] = daily_df["Close_last"] / (daily_df["MA10"] + EPSILON) - 1
+    daily_df["MA50_Deviation"] = daily_df["Close_last"] / (daily_df["MA50"] + EPSILON) - 1
     daily_df["MA5_vs_MA20"] = (
         daily_df["Close_last"].rolling(5).mean()
         / (daily_df["Close_last"].rolling(20).mean() + EPSILON)
@@ -367,9 +337,7 @@ def calculate_one_stock_features(
 
     daily_df["RSI_14d"] = _calculate_rsi(daily_df["Close_last"], 14)
     close_prices_daily = daily_df["Close_last"]
-    macd_line_daily, macd_signal_daily, macd_hist_daily = _calculate_MACD(
-        close_prices_daily
-    )
+    macd_line_daily, macd_signal_daily, macd_hist_daily = _calculate_MACD(close_prices_daily)
     daily_df["MACD_line_daily"] = macd_line_daily
     daily_df["MACD_signal_daily"] = macd_signal_daily
     daily_df["MACD_hist_daily"] = macd_hist_daily
@@ -399,9 +367,7 @@ def calculate_one_stock_features(
         daily_df["Volume_sum"],
         timeperiod=14,
     )
-    upper_d, middle_d, lower_d = _calculate_bbands(
-        daily_df["Close_last"], timeperiod=20, nbdev=2
-    )
+    upper_d, middle_d, lower_d = _calculate_bbands(daily_df["Close_last"], timeperiod=20, nbdev=2)
     daily_df["BB_Upper_daily"] = upper_d
     daily_df["BB_Lower_daily"] = lower_d
     daily_df["BB_Middle_daily"] = middle_d
@@ -436,18 +402,12 @@ def calculate_one_stock_features(
             daily_df[f"{base}_lag{lag}"] = daily_df[base].shift(lag)
 
     daily_df["Vol_Price_Synergy"] = daily_df["Volume_sum"] * daily_df["Returns_1h_mean"]
-    daily_df["Risk_Adj_Momentum_5d"] = daily_df["Return_5d"] / (
-        daily_df["ATR_14d"] + EPSILON
-    )
-    daily_df["Risk_Adj_Momentum_1d"] = daily_df["Return_1d"] / (
-        daily_df["ATR_14d"] + EPSILON
-    )
+    daily_df["Risk_Adj_Momentum_5d"] = daily_df["Return_5d"] / (daily_df["ATR_14d"] + EPSILON)
+    daily_df["Risk_Adj_Momentum_1d"] = daily_df["Return_1d"] / (daily_df["ATR_14d"] + EPSILON)
 
     # === Trend Signals ===
     daily_df["MACD_Diff"] = daily_df["MACD_line_last"] - daily_df["MACD_signal_last"]
-    daily_df["MACD_Direction"] = (
-        daily_df["MACD_Diff"].diff().astype(float) > 0
-    ).astype(int)
+    daily_df["MACD_Direction"] = (daily_df["MACD_Diff"].diff().astype(float) > 0).astype(int)
     daily_df["Trend_Continuation_3d"] = (
         (daily_df["Return_1d"] > 0)
         & (daily_df["Return_1d"].shift(1) > 0)
@@ -479,47 +439,29 @@ def calculate_one_stock_features(
 
     # === Opening Deviation ===
     daily_df["Open_vs_MA5"] = (
-        daily_df["Open_first"]
-        / (daily_df["Close_last"].rolling(5).mean().shift(1) + EPSILON)
-        - 1
+        daily_df["Open_first"] / (daily_df["Close_last"].rolling(5).mean().shift(1) + EPSILON) - 1
     )
     daily_df["Open_vs_MA20"] = (
-        daily_df["Open_first"]
-        / (daily_df["Close_last"].rolling(20).mean().shift(1) + EPSILON)
-        - 1
+        daily_df["Open_first"] / (daily_df["Close_last"].rolling(20).mean().shift(1) + EPSILON) - 1
     )
     daily_df["Open_Volatility_3d"] = (
         daily_df["Open_first"].pct_change(fill_method=None).rolling(3).std()
     )
-    daily_df["Open_Momentum_3d"] = daily_df["Open_first"].pct_change(
-        3, fill_method=None
-    )
+    daily_df["Open_Momentum_3d"] = daily_df["Open_first"].pct_change(3, fill_method=None)
 
     # === Range Compression & Expansion ===
     daily_df["Daily_Range"] = daily_df["High_max"] - daily_df["Low_min"]
     daily_df["Daily_Range_for_pct_change"] = daily_df["Daily_Range"].replace(0, np.nan)
-    daily_df["Daily_Range_for_pct_change"] = daily_df[
-        "Daily_Range_for_pct_change"
-    ].ffill()
-    daily_df["Daily_Range_for_pct_change"] = daily_df[
-        "Daily_Range_for_pct_change"
-    ].fillna(EPSILON)
-    daily_df["Range_Change"] = daily_df["Daily_Range_for_pct_change"].pct_change(
-        fill_method=None
-    )
+    daily_df["Daily_Range_for_pct_change"] = daily_df["Daily_Range_for_pct_change"].ffill()
+    daily_df["Daily_Range_for_pct_change"] = daily_df["Daily_Range_for_pct_change"].fillna(EPSILON)
+    daily_df["Range_Change"] = daily_df["Daily_Range_for_pct_change"].pct_change(fill_method=None)
     daily_df["Range_MA5"] = daily_df["Daily_Range"].rolling(5).mean()
-    daily_df["Range_vs_MA5"] = daily_df["Daily_Range"] / (
-        daily_df["Range_MA5"] + EPSILON
-    )
+    daily_df["Range_vs_MA5"] = daily_df["Daily_Range"] / (daily_df["Range_MA5"] + EPSILON)
     daily_df["Range_Std_5d"] = daily_df["Daily_Range"].rolling(5).std()
-    daily_df["Range_to_Volume"] = daily_df["Daily_Range"] / (
-        daily_df["Volume_sum"] + EPSILON
-    )
+    daily_df["Range_to_Volume"] = daily_df["Daily_Range"] / (daily_df["Volume_sum"] + EPSILON)
 
     # === Volume Acceleration ===
-    daily_df["Volume_Accel"] = daily_df["Volume_sum"].diff(1) - daily_df[
-        "Volume_sum"
-    ].diff(2)
+    daily_df["Volume_Accel"] = daily_df["Volume_sum"].diff(1) - daily_df["Volume_sum"].diff(2)
     daily_df["Volume_Shock_5d"] = daily_df["Volume_sum"].rolling(5).std() / (
         daily_df["Volume_sum"].rolling(5).mean() + EPSILON
     )
@@ -530,9 +472,7 @@ def calculate_one_stock_features(
     )
 
     # === Flow Strength ===
-    daily_df["Flow_to_Volume"] = daily_df["OBV_last_diff"] / (
-        daily_df["Volume_sum"] + EPSILON
-    )
+    daily_df["Flow_to_Volume"] = daily_df["OBV_last_diff"] / (daily_df["Volume_sum"] + EPSILON)
     mfm = (
         (daily_df["Close_last"] - daily_df["Low_min"])
         - (daily_df["High_max"] - daily_df["Close_last"])
@@ -554,9 +494,9 @@ def calculate_one_stock_features(
     )
 
     # === Target Calculation ===
-    daily_df["Target"] = (
-        daily_df["Open_first"].shift(-2) - daily_df["Open_first"].shift(-1)
-    ) / (daily_df["Open_first"].shift(-1) + EPSILON)
+    daily_df["Target"] = (daily_df["Open_first"].shift(-2) - daily_df["Open_first"].shift(-1)) / (
+        daily_df["Open_first"].shift(-1) + EPSILON
+    )
 
     # create a new copy to improve memory efficiency
     daily_df = daily_df.copy()
@@ -599,9 +539,7 @@ def _calculate_rsi(series: pd.Series, window: int) -> pd.Series:
     return rsi
 
 
-def _calculate_atr(
-    high: pd.Series, low: pd.Series, close: pd.Series, window: int
-) -> pd.Series:
+def _calculate_atr(high: pd.Series, low: pd.Series, close: pd.Series, window: int) -> pd.Series:
     """Calculate Average True Range (ATR)"""
     hl = high - low
     hc = (high - close.shift()).abs()
@@ -667,16 +605,9 @@ def _calculate_bbands(close: pd.Series, timeperiod: int = 20, nbdev: float = 2.0
     return upper, middle, lower
 
 
-def _calculate_cci(
-    high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int = 14
-):
+def _calculate_cci(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int = 14):
     """Calculates Commodity Channel Index (CCI)."""
-    if (
-        high.isna().all()
-        or low.isna().all()
-        or close.isna().all()
-        or high.count() < timeperiod
-    ):
+    if high.isna().all() or low.isna().all() or close.isna().all() or high.count() < timeperiod:
         return pd.Series(np.nan, index=high.index)
 
     tp = (high + low + close) / 3
@@ -685,9 +616,7 @@ def _calculate_cci(
     # Calculate mean deviation using rolling apply (can be slow on large data)
     # Ensure raw=True for potential performance benefit, handle potential all-NaN windows
     mean_dev = tp.rolling(window=timeperiod, min_periods=timeperiod).apply(
-        lambda x: np.mean(np.abs(x - np.nanmean(x)))
-        if not np.isnan(x).all()
-        else np.nan,
+        lambda x: np.mean(np.abs(x - np.nanmean(x))) if not np.isnan(x).all() else np.nan,
         raw=True,
     )
 
@@ -716,16 +645,8 @@ def _calculate_mfi(
     rmf = tp * volume
     tp_diff = tp.diff(1).astype(float)
 
-    pmf = (
-        rmf.where(tp_diff > 0, 0.0)
-        .rolling(window=timeperiod, min_periods=timeperiod)
-        .sum()
-    )
-    nmf = (
-        rmf.where(tp_diff < 0, 0.0)
-        .rolling(window=timeperiod, min_periods=timeperiod)
-        .sum()
-    )
+    pmf = rmf.where(tp_diff > 0, 0.0).rolling(window=timeperiod, min_periods=timeperiod).sum()
+    nmf = rmf.where(tp_diff < 0, 0.0).rolling(window=timeperiod, min_periods=timeperiod).sum()
 
     mfr = pmf / (nmf + EPSILON)
     mfi = 100.0 - (100.0 / (1.0 + mfr))
@@ -735,9 +656,7 @@ def _calculate_mfi(
     return mfi
 
 
-def _calculate_atr_wilder(
-    high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int
-):
+def _calculate_atr_wilder(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int):
     """Helper for ATR with Wilder smoothing (alpha=1/N)."""
     if (
         high.isna().all()
@@ -756,9 +675,7 @@ def _calculate_atr_wilder(
     return atr
 
 
-def _calculate_adx(
-    high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int = 14
-):
+def _calculate_adx(high: pd.Series, low: pd.Series, close: pd.Series, timeperiod: int = 14):
     """Calculates Average Directional Movement Index (ADX)."""
     if (
         high.isna().all()
@@ -806,7 +723,7 @@ def calculate_features(df_dict: dict) -> dict:
     """Process 1h OHLCV data to create daily features and prediction target"""
     daily_dict = {}
     tasks = list(df_dict.items())
-    num_processes = min(max(1, cpu_count() - 1), settings.MAX_NUM_PROCESSES)
+    num_processes = min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)
 
     with Pool(processes=num_processes) as pool:
         results_iterator = pool.imap(calculate_one_stock_features, tasks)
@@ -872,9 +789,7 @@ def calculate_features(df_dict: dict) -> dict:
         stock_df = daily_dict[stock]
 
         for etf, etf_df in prepared_etf_data_for_embedding.items():
-            stock_df = pd.merge(
-                stock_df, etf_df, left_index=True, right_index=True, how="left"
-            )
+            stock_df = pd.merge(stock_df, etf_df, left_index=True, right_index=True, how="left")
 
         daily_dict[stock] = stock_df
 
@@ -890,24 +805,16 @@ def process_features_for_train_and_validate(
     apply_scale: bool = False,
     seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict, dict, dict]:
-    """Process Data, including washing, removing Nan, scaling and spliting for training purpose"""
+    """Process Data, including washing, removing Nan, scaling and spliting for training"""
     process_feature_config: dict[str, Any] = {}
     X_train_list, y_train_list = [], []
     X_validate_list, y_validate_list = [], []
     X_validate_dict, y_validate_dict = {}, {}
 
-    train_start = pd.to_datetime(settings.TRAINING_DATA_START_DATE).tz_localize(
-        "America/New_York"
-    )
-    train_end = pd.to_datetime(settings.TRAINING_DATA_END_DATE).tz_localize(
-        "America/New_York"
-    )
-    val_start = pd.to_datetime(settings.VALIDATION_DATA_START_DATE).tz_localize(
-        "America/New_York"
-    )
-    val_end = pd.to_datetime(settings.VALIDATION_DATA_END_DATE).tz_localize(
-        "America/New_York"
-    )
+    train_start = pd.to_datetime(settings.TRAINING_DATA_START_DATE).tz_localize("America/New_York")
+    train_end = pd.to_datetime(settings.TRAINING_DATA_END_DATE).tz_localize("America/New_York")
+    val_start = pd.to_datetime(settings.VALIDATION_DATA_START_DATE).tz_localize("America/New_York")
+    val_end = pd.to_datetime(settings.VALIDATION_DATA_END_DATE).tz_localize("America/New_York")
 
     logger.info(f"Using data from {train_start} to {train_end} for training.")
     logger.info(f"Using data from {val_start} to {val_end} for validation.")
@@ -920,7 +827,9 @@ def process_features_for_train_and_validate(
         stock_id_map[stock] = stock_code_to_id(stock)
     if len(stock_id_map.values()) != len(set(stock_id_map.values())):
         logger.error(
-            f"Stock mapping mismatch. Stock id number: {len(stock_id_map.values())}, Stock number: {len(set(stock_id_map.values()))}"
+            f"Stock mapping mismatch. "
+            f"Stock id number: {len(stock_id_map.values())}, "
+            f"Stock number: {len(set(stock_id_map.values()))}"
         )
         raise ValueError("Stock mapping mismatch.")
     process_feature_config["stock_id_map"] = stock_id_map
@@ -969,15 +878,11 @@ def process_features_for_train_and_validate(
             )
 
             boolean_cols = X_train_dropna.select_dtypes(include="bool").columns.tolist()
-            numerical_cols = [
-                col for col in X_train_dropna.columns if col not in boolean_cols
-            ]
+            numerical_cols = [col for col in X_train_dropna.columns if col not in boolean_cols]
 
             lower_ratio = settings.CLIP_LOWER_QUANTILE_RATIO
             upper_ratio = settings.CLIP_UPPER_QUANTILE_RATIO
-            quantiles = X_train_dropna[numerical_cols].quantile(
-                [lower_ratio, upper_ratio]
-            )
+            quantiles = X_train_dropna[numerical_cols].quantile([lower_ratio, upper_ratio])
             lower_bound = quantiles.xs(lower_ratio)
             upper_bound = quantiles.xs(upper_ratio)
             assert isinstance(lower_bound, pd.Series)
@@ -1008,9 +913,7 @@ def process_features_for_train_and_validate(
 
             stock_id = stock_id_map[stock]
             X_train_scaled["stock_id"] = stock_id
-            X_train_scaled["stock_id"] = X_train_scaled["stock_id"].astype(
-                cat_stock_id_type
-            )
+            X_train_scaled["stock_id"] = X_train_scaled["stock_id"].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_train_scaled["stock_sector"] = sector_id
@@ -1041,9 +944,9 @@ def process_features_for_train_and_validate(
 
             X_validate_clipped = X_validate_dropna.copy()
             if apply_clip:
-                X_validate_clipped[numerical_cols] = X_validate_dropna[
-                    numerical_cols
-                ].clip(lower_bound, upper_bound, axis=1)
+                X_validate_clipped[numerical_cols] = X_validate_dropna[numerical_cols].clip(
+                    lower_bound, upper_bound, axis=1
+                )
             else:
                 X_validate_clipped[numerical_cols] = X_validate_dropna[numerical_cols]
 
@@ -1062,15 +965,13 @@ def process_features_for_train_and_validate(
 
             stock_id = stock_id_map[stock]
             X_validate_scaled["stock_id"] = stock_id
-            X_validate_scaled["stock_id"] = X_validate_scaled["stock_id"].astype(
-                cat_stock_id_type
-            )
+            X_validate_scaled["stock_id"] = X_validate_scaled["stock_id"].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_validate_scaled["stock_sector"] = sector_id
-            X_validate_scaled["stock_sector"] = X_validate_scaled[
-                "stock_sector"
-            ].astype(cat_sector_id_type)
+            X_validate_scaled["stock_sector"] = X_validate_scaled["stock_sector"].astype(
+                cat_sector_id_type
+            )
 
             X_validate_list.append(X_validate_scaled)
             y_validate_list.append(y_validate_stock)
@@ -1110,7 +1011,7 @@ def process_features_for_train_and_validate(
 def process_features_for_backtest(
     daily_dict: dict, config_data: dict, predict_stock_list: list
 ) -> tuple[dict, dict, int]:
-    """Process Data, including washing, removing Nan, scaling and spliting for backtest purpose"""
+    """Process Data, including washing, removing Nan, scaling and spliting for backtest"""
     X_backtest_dict = {}
     y_backtest_dict = {}
 
@@ -1125,15 +1026,11 @@ def process_features_for_backtest(
         df = df.copy()
         daily_dict[stock] = df.dropna(subset=["Target"])
 
-    test_start = pd.to_datetime(settings.TESTING_DATA_START_DATE).tz_localize(
-        "America/New_York"
-    )
+    test_start = pd.to_datetime(settings.TESTING_DATA_START_DATE).tz_localize("America/New_York")
     if settings.TESTING_DATA_END_DATE is None:
         test_end = pd.Timestamp.now(tz="America/New_York")
     else:
-        test_end = pd.to_datetime(settings.TESTING_DATA_END_DATE).tz_localize(
-            "America/New_York"
-        )
+        test_end = pd.to_datetime(settings.TESTING_DATA_END_DATE).tz_localize("America/New_York")
     logger.info(f"Using data from {test_start} to {test_end} for backtesting.")
 
     for stock in daily_dict.keys():
@@ -1188,19 +1085,15 @@ def process_features_for_backtest(
                 f"Prediction data contains missing values for stock {stock}"
             )
 
-            boolean_cols = X_backtest_dropna.select_dtypes(
-                include="bool"
-            ).columns.tolist()
-            numerical_cols = [
-                col for col in X_backtest_dropna.columns if col not in boolean_cols
-            ]
+            boolean_cols = X_backtest_dropna.select_dtypes(include="bool").columns.tolist()
+            numerical_cols = [col for col in X_backtest_dropna.columns if col not in boolean_cols]
 
             X_backtest_clipped = X_backtest_dropna.copy()
 
             if apply_clip:
-                X_backtest_clipped[numerical_cols] = X_backtest_dropna[
-                    numerical_cols
-                ].clip(lower_bound, upper_bound, axis=1)
+                X_backtest_clipped[numerical_cols] = X_backtest_dropna[numerical_cols].clip(
+                    lower_bound, upper_bound, axis=1
+                )
             else:
                 X_backtest_clipped[numerical_cols] = X_backtest_dropna[numerical_cols]
 
@@ -1219,15 +1112,13 @@ def process_features_for_backtest(
 
             stock_id = stock_id_map[stock]
             X_backtest_scaled["stock_id"] = stock_id
-            X_backtest_scaled["stock_id"] = X_backtest_scaled["stock_id"].astype(
-                cat_stock_id_type
-            )
+            X_backtest_scaled["stock_id"] = X_backtest_scaled["stock_id"].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_backtest_scaled["stock_sector"] = sector_id
-            X_backtest_scaled["stock_sector"] = X_backtest_scaled[
-                "stock_sector"
-            ].astype(cat_sector_id_type)
+            X_backtest_scaled["stock_sector"] = X_backtest_scaled["stock_sector"].astype(
+                cat_sector_id_type
+            )
 
             for i in range(backtest_day_number):
                 X_backtest_dict[i][stock] = X_backtest_scaled.iloc[[i]]
@@ -1237,7 +1128,7 @@ def process_features_for_backtest(
 
 
 def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
-    """Process Data, including washing, removing Nan, scaling and spliting for prediction purpose"""
+    """Process Data, including washing, removing Nan, scaling and spliting for prediction"""
     X_predict_dict = {}
 
     stock_id_map = config_data["stock_id_map"]
@@ -1275,19 +1166,15 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
                 f"Prediction data contains missing values for stock {stock}"
             )
 
-            boolean_cols = X_predict_dropna.select_dtypes(
-                include="bool"
-            ).columns.tolist()
-            numerical_cols = [
-                col for col in X_predict_dropna.columns if col not in boolean_cols
-            ]
+            boolean_cols = X_predict_dropna.select_dtypes(include="bool").columns.tolist()
+            numerical_cols = [col for col in X_predict_dropna.columns if col not in boolean_cols]
 
             X_predict_clipped = X_predict_dropna.copy()
 
             if apply_clip:
-                X_predict_clipped[numerical_cols] = X_predict_dropna[
-                    numerical_cols
-                ].clip(lower_bound, upper_bound, axis=1)
+                X_predict_clipped[numerical_cols] = X_predict_dropna[numerical_cols].clip(
+                    lower_bound, upper_bound, axis=1
+                )
             else:
                 X_predict_clipped[numerical_cols] = X_predict_dropna[numerical_cols]
 
@@ -1306,9 +1193,7 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
 
             stock_id = stock_id_map[stock]
             X_predict_scaled["stock_id"] = stock_id
-            X_predict_scaled["stock_id"] = X_predict_scaled["stock_id"].astype(
-                cat_stock_id_type
-            )
+            X_predict_scaled["stock_id"] = X_predict_scaled["stock_id"].astype(cat_stock_id_type)
 
             sector_id = stock_sector_id_map[stock]
             X_predict_scaled["stock_sector"] = sector_id

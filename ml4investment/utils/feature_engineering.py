@@ -987,6 +987,12 @@ def process_features_for_train_and_validate(
     assert isinstance(X_train, pd.DataFrame)
     assert isinstance(y_train, pd.Series)
 
+    assert X_train.isnull().sum().sum() == 0, "NaN values found in the final X_train."
+    assert np.isinf(X_train.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_train."
+
+    assert X_validate.isnull().sum().sum() == 0, "NaN values found in the final X_validate."
+    assert np.isinf(X_validate.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_validate."
+
     return (
         X_train,
         y_train,
@@ -1101,9 +1107,12 @@ def process_features_for_backtest(
             X_backtest_list.append(X_backtest_scaled)
             y_backtest_list.append(y_backtest_stock)
 
-        X_backtest = pd.concat(X_backtest_list)
-        y_backtest = pd.concat(y_backtest_list)
-        assert isinstance(y_backtest, pd.Series)
+    X_backtest = pd.concat(X_backtest_list)
+    y_backtest = pd.concat(y_backtest_list)
+    assert isinstance(y_backtest, pd.Series)
+
+    assert X_backtest.isnull().sum().sum() == 0, "NaN values found in the final X_backtest."
+    assert np.isinf(X_backtest.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_backtest."
 
     return X_backtest, y_backtest
 
@@ -1190,5 +1199,8 @@ def process_features_for_predict(
             X_predict_list.append(X_predict_scaled)
 
     X_predict = pd.concat(X_predict_list)
+
+    assert X_predict.isnull().sum().sum() == 0, "NaN values found in the final X_predict."
+    assert np.isinf(X_predict.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_predict."
 
     return X_predict

@@ -85,7 +85,7 @@ def predict(
     stock_last_prices = {
         stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items()
     }
-    sorted_results["last_price"] = sorted_results["stock_code"].map(stock_last_prices)
+    sorted_results["last_price"] = sorted_results["stock_code"].map(stock_last_prices).astype(float)
 
     recommended_df = (
         sorted_results[sorted_results["prediction"] > 0]

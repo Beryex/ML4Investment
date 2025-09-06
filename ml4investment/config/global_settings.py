@@ -34,13 +34,13 @@ class Settings:
     }
     STOCK_SECTOR_ID_MAP_PTH: str = "config/stock_sector_id_mapping.json"
     STOCK_SECTOR_ID_MAP: Dict[str, int] = json.load(open(STOCK_SECTOR_ID_MAP_PTH, "r"))
-    APPLY_CLIP: bool = False
-    APPLY_SCALE: bool = False
+    APPLY_CLIP: bool = True
+    APPLY_SCALE: bool = True
     CLIP_LOWER_QUANTILE_RATIO: float = 0.005
     CLIP_UPPER_QUANTILE_RATIO: float = 0.995
 
     # Model Training
-    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2023-11-30")
+    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2013-11-30")
     TRAINING_DATA_END_DATE: str = "2024-11-30"
     VALIDATION_DATA_START_DATE: str = "2024-12-01"
     VALIDATION_DATA_END_DATE: str = "2025-05-31"

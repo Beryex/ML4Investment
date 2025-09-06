@@ -66,16 +66,6 @@ def train(
         seed=seed,
     )
 
-    logger.info(f"Oldest date in training data: {X_train.index.min()}")
-    logger.info(f"Newest date in training data: {X_train.index.max()}")
-    logger.info(f"Total processed samples in training data: {X_train.shape[0]}")
-    logger.info(f"Number of features in training data: {X_train.shape[1]}")
-
-    logger.info(f"Oldest date in validation data: {X_validate.index.min()}")
-    logger.info(f"Newest date in validation data: {X_validate.index.max()}")
-    logger.info(f"Total processed samples in validation data: {X_validate.shape[0]}")
-    logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
-
     """ 3. Load data sampling proportion, features and hyperparameters """
     if args.optimize_features:
         logger.info("Optimize model features from the scratch, using all features initially")
@@ -183,6 +173,16 @@ def train(
         )
 
     """ 7. Train, validate the final model and apply prediction stock optimization if required """
+    logger.info(f"Oldest date in training data: {X_train.index.min()}")
+    logger.info(f"Newest date in training data: {X_train.index.max()}")
+    logger.info(f"Total processed samples in training data: {X_train.shape[0]}")
+    logger.info(f"Number of features in training data: {X_train.shape[1]}")
+
+    logger.info(f"Oldest date in validation data: {X_validate.index.min()}")
+    logger.info(f"Newest date in validation data: {X_validate.index.max()}")
+    logger.info(f"Total processed samples in validation data: {X_validate.shape[0]}")
+    logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
+    
     final_model = model_training(
         X_train,
         y_train,

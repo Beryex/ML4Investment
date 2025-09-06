@@ -1,13 +1,11 @@
 import json
 import logging
 import math
-from collections import defaultdict
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any
 
 import lightgbm as lgb
-import numpy as np
 import optuna
 import pandas as pd
 from lightgbm import register_logger
@@ -15,8 +13,7 @@ from optuna.importance import get_param_importances
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
-from ml4investment.utils.model_predicting import get_detailed_static_result
-from ml4investment.utils.utils import OptimalIterationLogger, id_to_stock_code
+from ml4investment.utils.utils import OptimalIterationLogger, get_detailed_static_result
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
@@ -27,18 +24,11 @@ def model_training(
     y_train: pd.Series,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
-    X_validate_dict: dict,
-    y_validate_dict: dict,
     categorical_features: list,
     model_hyperparams: dict,
-    target_stock_list: list,
-    optimize_predict_stocks: bool = True,
-    seed: int = 42,
-    verbose: bool = False,
-) -> tuple[lgb.Booster, list, float, float, float, float, float, float, float]:
+) -> lgb.Booster:
     """Train the final model with optimized parameters"""
     logger.info("Begin model training with optimized parameters")
-    logger.info(model_hyperparams)
     metric_logger_cb = OptimalIterationLogger()
     final_model = lgb.train(
         model_hyperparams,
@@ -55,104 +45,20 @@ def model_training(
         f"{final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}"
     )
 
-    (
-        valid_mae,
-        valid_mse,
-        valid_sign_acc,
-        valid_precision,
-        valid_recall,
-        valid_f1,
-        valid_gain,
-        predict_stock_list,
-    ) = validate_model(
-        final_model,
-        X_validate,
-        y_validate,
-        X_validate_dict,
-        y_validate_dict,
-        target_stock_list=target_stock_list,
-        optimize_predict_stocks=optimize_predict_stocks,
-        verbose=verbose,
-    )
-
     logger.info("Model training completed")
 
-    return (
-        final_model,
-        predict_stock_list,
-        valid_mae,
-        valid_mse,
-        valid_sign_acc,
-        valid_precision,
-        valid_recall,
-        valid_f1,
-        valid_gain,
-    )
+    return final_model
 
 
 def validate_model(
     model: lgb.Booster,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
-    X_validate_dict: dict,
-    y_validate_dict: dict,
     target_stock_list: list[str],
-    optimize_predict_stocks: bool,
     verbose: bool = False,
-) -> tuple[float, float, float, float, float, float, float, list]:
+) -> tuple[float, float, float, float, float, float, float, float, list]:
     """Validate the model on the validation dataset"""
     logger.info("Starting model validation on the provided validation set.")
-
-    stock_actual_gains_collect = defaultdict(lambda: {"total_gain": 1.0, "sample_count": 0})
-
-    preds = model.predict(X_validate, num_iteration=model.best_iteration)
-    assert isinstance(preds, np.ndarray)
-
-    unique_stock_ids_in_val = X_validate["stock_id"].unique()
-    for stock_id_val in unique_stock_ids_in_val:
-        stock_code_val = id_to_stock_code(stock_id_val)
-
-        stock_mask = X_validate["stock_id"] == stock_id_val
-        stock_preds = preds[stock_mask]
-        stock_y_val_numpy = y_validate[stock_mask].to_numpy()
-
-        if stock_code_val in target_stock_list:
-            # Only optimize predict stock list from target stock list
-            positive_pred_mask = stock_preds > 0
-            if np.any(positive_pred_mask):
-                factors_to_multiply = 1 + stock_y_val_numpy[positive_pred_mask]
-                current_stock_gain_prod = float(np.prod(factors_to_multiply))
-
-                stock_actual_gains_collect[stock_code_val]["total_gain"] *= current_stock_gain_prod
-                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(stock_preds)
-            else:
-                stock_actual_gains_collect[stock_code_val]["sample_count"] += len(stock_preds)
-
-    stock_avg_actual_gain_dict = {
-        stock_code: data["total_gain"] ** (1 / data["sample_count"])
-        for stock_code, data in stock_actual_gains_collect.items()
-    }
-
-    if optimize_predict_stocks:
-        logger.info("Begin predict stocks optimization")
-        logger.info(
-            f"Using average actual gain as the predict stocks optimization metric "
-            f"with target number {settings.PREDICT_STOCK_NUMBER}"
-        )
-        sorted_stock_avg_actual_gain_list = sorted(
-            stock_avg_actual_gain_dict.items(), key=lambda item: item[1], reverse=True
-        )
-        predict_stock_list = [
-            stock
-            for stock, _ in sorted_stock_avg_actual_gain_list[: settings.PREDICT_STOCK_NUMBER]
-        ]
-        logger.info(
-            f"Selected {len(predict_stock_list)} stocks for prediction: "
-            f"{', '.join(predict_stock_list)}"
-        )
-    else:
-        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
-        predict_stock_list = target_stock_list
 
     (
         valid_mae,
@@ -161,14 +67,14 @@ def validate_model(
         valid_precision,
         valid_recall,
         valid_f1,
-        valid_gain,
+        vaild_average_daily_gain,
+        vaild_overall_gain,
+        sorted_stocks,
     ) = get_detailed_static_result(
         model=model,
-        X_dict=X_validate_dict,
-        y_dict=y_validate_dict,
-        predict_stock_list=predict_stock_list,
-        start_date=settings.VALIDATION_DATA_START_DATE,
-        end_date=settings.VALIDATION_DATA_END_DATE,
+        X=X_validate,
+        y=y_validate,
+        predict_stock_list=target_stock_list,
         name="Validation",
         verbose=verbose,
     )
@@ -182,8 +88,9 @@ def validate_model(
         valid_precision,
         valid_recall,
         valid_f1,
-        valid_gain,
-        predict_stock_list,
+        vaild_average_daily_gain,
+        vaild_overall_gain,
+        sorted_stocks,
     )
 
 

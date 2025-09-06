@@ -804,12 +804,11 @@ def process_features_for_train_and_validate(
     apply_clip: bool = False,
     apply_scale: bool = False,
     seed: int = 42,
-) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict, dict, dict]:
+) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict]:
     """Process Data, including washing, removing Nan, scaling and spliting for training"""
     process_feature_config: dict[str, Any] = {}
     X_train_list, y_train_list = [], []
     X_validate_list, y_validate_list = [], []
-    X_validate_dict, y_validate_dict = {}, {}
 
     train_start = pd.to_datetime(settings.TRAINING_DATA_START_DATE).tz_localize("America/New_York")
     train_end = pd.to_datetime(settings.TRAINING_DATA_END_DATE).tz_localize("America/New_York")
@@ -976,15 +975,6 @@ def process_features_for_train_and_validate(
             X_validate_list.append(X_validate_scaled)
             y_validate_list.append(y_validate_stock)
 
-            validate_day_number = X_validate_scaled.shape[0]
-            for i in range(validate_day_number):
-                if i not in X_validate_dict:
-                    X_validate_dict[i] = {}
-                if i not in y_validate_dict:
-                    y_validate_dict[i] = {}
-                X_validate_dict[i][stock] = X_validate_scaled.iloc[[i]]
-                y_validate_dict[i][stock] = y_validate_stock.iloc[i]
-
     X_train = pd.concat(X_train_list)
     y_train = pd.concat(y_train_list)
     X_validate = pd.concat(X_validate_list)
@@ -1002,18 +992,16 @@ def process_features_for_train_and_validate(
         y_train,
         X_validate,
         y_validate,
-        X_validate_dict,
-        y_validate_dict,
         process_feature_config,
     )
 
 
 def process_features_for_backtest(
     daily_dict: dict, config_data: dict, predict_stock_list: list
-) -> tuple[dict, dict, int]:
+) -> tuple[pd.DataFrame, pd.Series]:
     """Process Data, including washing, removing Nan, scaling and spliting for backtest"""
-    X_backtest_dict = {}
-    y_backtest_dict = {}
+    X_backtest_list = []
+    y_backtest_list = []
 
     stock_id_map = config_data["stock_id_map"]
     cat_stock_id_type = config_data["cat_stock_id_type"]
@@ -1038,16 +1026,6 @@ def process_features_for_backtest(
         daily_dict[stock] = cur_stock_df[
             (cur_stock_df.index >= test_start) & (cur_stock_df.index <= test_end)
         ]
-
-    backtest_day_numbers = {df.shape[0] for df in daily_dict.values()}
-    if len(backtest_day_numbers) != 1:
-        logger.error(f"Backtest day number mismatched: {backtest_day_numbers}")
-        raise ValueError(f"Backtest day number mismatched: {backtest_day_numbers}")
-    backtest_day_number = backtest_day_numbers.pop()
-
-    for i in range(backtest_day_number):
-        X_backtest_dict[i] = {}
-        y_backtest_dict[i] = {}
 
     if apply_clip:
         logger.info("Apply clipping")
@@ -1120,16 +1098,21 @@ def process_features_for_backtest(
                 cat_sector_id_type
             )
 
-            for i in range(backtest_day_number):
-                X_backtest_dict[i][stock] = X_backtest_scaled.iloc[[i]]
-                y_backtest_dict[i][stock] = y_backtest_stock.iloc[i]
+            X_backtest_list.append(X_backtest_scaled)
+            y_backtest_list.append(y_backtest_stock)
 
-    return X_backtest_dict, y_backtest_dict, backtest_day_number
+        X_backtest = pd.concat(X_backtest_list)
+        y_backtest = pd.concat(y_backtest_list)
+        assert isinstance(y_backtest, pd.Series)
+
+    return X_backtest, y_backtest
 
 
-def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
+def process_features_for_predict(
+    daily_dict: dict, config_data: dict, predict_stock_list: list[str]
+) -> pd.DataFrame:
     """Process Data, including washing, removing Nan, scaling and spliting for prediction"""
-    X_predict_dict = {}
+    X_predict_list = []
 
     stock_id_map = config_data["stock_id_map"]
     cat_stock_id_type = config_data["cat_stock_id_type"]
@@ -1150,6 +1133,9 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
 
     with tqdm(daily_dict.items(), desc="Process features for predict") as pbar:
         for stock, df in pbar:
+            if stock not in predict_stock_list:
+                continue
+
             X_predict_stock = df.iloc[[-1]].copy()
 
             cur_config_data = config_data[stock]
@@ -1201,6 +1187,8 @@ def process_features_for_predict(daily_dict: dict, config_data: dict) -> dict:
                 cat_sector_id_type
             )
 
-            X_predict_dict[stock] = X_predict_scaled
+            X_predict_list.append(X_predict_scaled)
 
-    return X_predict_dict
+    X_predict = pd.concat(X_predict_list)
+
+    return X_predict

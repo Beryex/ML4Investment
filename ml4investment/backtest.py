@@ -14,8 +14,7 @@ from ml4investment.utils.feature_engineering import (
     process_features_for_backtest,
 )
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.model_predicting import get_detailed_static_result
-from ml4investment.utils.utils import set_random_seed
+from ml4investment.utils.utils import get_detailed_static_result, set_random_seed
 
 
 def backtest(
@@ -41,37 +40,18 @@ def backtest(
 
     daily_features_data = calculate_features(backtest_data)
 
-    X_backtest_dict, y_backtest_dict, backtest_day_number = process_features_for_backtest(
+    X_backtest, y_backtest = process_features_for_backtest(
         daily_features_data, process_feature_config, predict_stock_list
     )
 
-    for i in range(backtest_day_number):
-        for stock, data in X_backtest_dict[i].items():
-            X_backtest_dict[i][stock] = data[selected_features]
+    X_backtest = X_backtest[selected_features]
 
-    backtest_oldest_dates = {X_backtest.index.min() for X_backtest in X_backtest_dict[0].values()}
-    if len(backtest_oldest_dates) != 1:
-        logger.error("Oldest backtest date mismatched")
-        raise ValueError("Oldest backtest date mismatched")
-    backtest_oldest_date = backtest_oldest_dates.pop()
-
-    backtest_newest_dates = {
-        X_backtest.index.max() for X_backtest in X_backtest_dict[backtest_day_number - 1].values()
-    }
-    if len(backtest_newest_dates) != 1:
-        logger.error("Newest backtest date mismatched")
-        raise ValueError("Newest backtest date mismatched")
-    backtest_newest_date = backtest_newest_dates.pop()
-
-    logger.info(f"Oldest date in backtest data: {backtest_oldest_date}")
-    logger.info(f"Newest date in backtest data: {backtest_newest_date}")
-
-    feature_nums = {len(list(X_predict.columns)) for X_predict in X_backtest_dict[0].values()}
-    if len(feature_nums) != 1:
-        logger.error(f"Feature number mismatched: {feature_nums}")
-        raise ValueError(f"Feature number mismatched: {feature_nums}")
-    feature_num = feature_nums.pop()
-    logger.info(f"Number of features: {feature_num}")
+    start_date = X_backtest.index.min()
+    end_date = X_backtest.index.max()
+    logger.info(f"Oldest date in backtest data: {start_date}")
+    logger.info(f"Newest date in backtest data: {end_date}")
+    logger.info(f"Total processed samples in backtest data: {X_backtest.shape[0]}")
+    logger.info(f"Number of features in backtest data: {X_backtest.shape[1]}")
 
     (
         backtest_mae,
@@ -80,15 +60,15 @@ def backtest(
         backtest_precision,
         backtest_recall,
         backtest_f1,
-        backtest_gain,
+        backtest_average_daily_gain,
+        backtest_overall_gain,
+        sorted_stocks,
     ) = get_detailed_static_result(
         model=model,
-        X_dict=X_backtest_dict,
-        y_dict=y_backtest_dict,
+        X=X_backtest,
+        y=y_backtest,
         predict_stock_list=predict_stock_list,
-        start_date=backtest_oldest_date,
-        end_date=backtest_newest_date,
-        name="Backtest Overall",
+        name="Backtest",
         verbose=args.verbose,
     )
 
@@ -100,7 +80,8 @@ def backtest(
             "backtest_precision": backtest_precision,
             "backtest_recall": backtest_recall,
             "backtest_f1": backtest_f1,
-            "backtest_gain": backtest_gain,
+            "backtest_average_daily_gain": backtest_average_daily_gain,
+            "backtest_overall_gain": backtest_overall_gain,
         }
     )
 

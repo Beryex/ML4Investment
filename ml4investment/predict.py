@@ -16,12 +16,12 @@ from ml4investment.utils.feature_engineering import (
     process_features_for_predict,
 )
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.model_predicting import (
-    get_predict_top_stocks_and_weights,
-    model_predict,
+from ml4investment.utils.utils import (
+    id_to_stock_code,
     perform_schwab_trade,
+    set_random_seed,
+    setup_schwab_client,
 )
-from ml4investment.utils.utils import set_random_seed, setup_schwab_client
 
 
 def predict(
@@ -47,28 +47,16 @@ def predict(
 
     daily_features_data = calculate_features(predict_data)
 
-    X_predict_dict = process_features_for_predict(daily_features_data, process_feature_config)
+    X_predict = process_features_for_predict(
+        daily_features_data, process_feature_config, predict_stock_list
+    )
 
-    for stock, data in X_predict_dict.items():
-        X_predict_dict[stock] = data[selected_features]
+    X_predict = X_predict[selected_features]
 
-    predict_dates = {str(X_predict.index[0]) for X_predict in X_predict_dict.values()}
-    if len(predict_dates) != 1:
-        logger.error(f"Predict date mismatched: {predict_dates}")
-        raise ValueError(f"Predict date mismatched: {predict_dates}")
-    predict_date = predict_dates.pop()
-    logger.info(f"Predicting based on data on {predict_date}")
-
-    feature_nums = {len(list(X_predict.columns)) for X_predict in X_predict_dict.values()}
-    if len(feature_nums) != 1:
-        logger.error(f"Feature number mismatched: {feature_nums}")
-        raise ValueError(f"Feature number mismatched: {feature_nums}")
-    feature_num = feature_nums.pop()
-    logger.info(f"Number of features: {feature_num}")
-
-    predictions = {}
-    for stock in predict_stock_list:
-        predictions[stock] = model_predict(model, X_predict_dict[stock])
+    assert X_predict.index.min() == X_predict.index.max()
+    logger.info(f"Predicting based on data on {X_predict.index.min()}")
+    logger.info(f"Total processed samples in predict data: {X_predict.shape[0]}")
+    logger.info(f"Number of features in predict data: {X_predict.shape[1]}")
 
     field_names = [
         "Stock",
@@ -82,66 +70,75 @@ def predict(
     predict_table.field_names = field_names
     wandb_table = wandb.Table(columns=field_names)
 
-    sorted_stock_gain_prediction = sorted(predictions.items(), key=lambda x: x[1], reverse=True)
-    predict_top_stock_and_weights_list = get_predict_top_stocks_and_weights(
-        sorted_stock_gain_prediction
-    )
-    actual_number_selected = len(predict_top_stock_and_weights_list)
+    predictions = model.predict(X_predict, num_iteration=model.best_iteration)
 
     total_balance = client.account_details(account_hash, fields="positions").json()[
         "securitiesAccount"
     ]["currentBalances"]["equity"]
 
+    results_df = pd.DataFrame(index=X_predict.index)
+    results_df["stock_code"] = X_predict["stock_id"].map(id_to_stock_code)
+    results_df["prediction"] = predictions
+    results_df["last_price"] = 0.0
+    sorted_results = results_df.sort_values("prediction", ascending=False)
     stock_quotes = client.quotes(symbols=predict_stock_list, fields="quote").json()
     stock_last_prices = {
         stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items()
     }
+    sorted_results["last_price"] = sorted_results["stock_code"].map(stock_last_prices)
 
-    stock_to_buy_in: dict[str, int] = {}
-    if actual_number_selected == 0:
+    recommended_df = (
+        sorted_results[sorted_results["prediction"] > 0]
+        .head(settings.NUMBER_OF_STOCKS_TO_BUY)
+        .copy()
+    )
+
+    if recommended_df.empty:
         logger.info("No stocks were recommended today (no positive predicted returns)")
+        recommended_df["weight"] = 0.0
+        stock_to_buy_in = {}
     else:
         logger.info(f"Give recommendation based on total investment value: ${total_balance:.2f}")
+        total_pred_sum = recommended_df["prediction"].sum()
+        recommended_df["weight"] = recommended_df["prediction"] / total_pred_sum
 
-        for stock, weight in predict_top_stock_and_weights_list:
-            recommended_investment_value = total_balance * weight
-            recommended_buy_in_number = math.floor(
-                recommended_investment_value / stock_last_prices[stock]
-            )
-            stock_to_buy_in[stock] = recommended_buy_in_number
+        recommended_df["invest_value"] = total_balance * recommended_df["weight"]
+        recommended_df["shares_to_buy"] = (
+            recommended_df["invest_value"] / recommended_df["last_price"]
+        ).apply(math.floor)
+        stock_to_buy_in = recommended_df.set_index("stock_code")["shares_to_buy"].to_dict()
 
-            row = [
-                stock,
-                f"{predictions[stock]:+.2%}",
-                f"{weight:.2%}",
-                f"${recommended_investment_value:.2f}",
-                f"${stock_last_prices[stock]:.2f}",
-                recommended_buy_in_number,
+        for _, row in recommended_df.iterrows():
+            table_row = [
+                row["stock_code"],
+                f"{row['prediction']:+.2%}",
+                f"{row['weight']:.2%}",
+                f"${row['invest_value']:.2f}",
+                f"${row['last_price']:.2f}",
+                row["shares_to_buy"],
             ]
-            predict_table.add_row(row, divider=True)
-            wandb_table.add_data(*row)
+            predict_table.add_row(table_row, divider=True)
+            wandb_table.add_data(*table_row)
 
     if args.verbose:
-        for stock, pred in sorted_stock_gain_prediction[actual_number_selected:]:
-            row = [
-                stock,
-                f"{pred:+.2%}",
-                "0",
-                "0",
-                f"${stock_last_prices[stock]:.2f}",
+        rejected_stocks = sorted_results[
+            ~sorted_results["stock_code"].isin(recommended_df["stock_code"])
+        ]
+        for _, row in rejected_stocks.iterrows():
+            table_row = [
+                row["stock_code"],
+                f"{row['prediction']:+.2%}",
+                "0.00%",
+                "$0.00",
+                f"${row['last_price']:.2f}",
                 0,
             ]
-            predict_table.add_row(row, divider=True)
-            wandb_table.add_data(*row)
+            predict_table.add_row(table_row, divider=True)
+            wandb_table.add_data(*table_row)
 
-    if args.verbose or actual_number_selected > 0:
-        logger.info(
-            f"\n{
-                predict_table.get_string(
-                    title=f'Suggested top {actual_number_selected} stocks to buy:'
-                )
-            }"
-        )
+    if args.verbose or not recommended_df.empty:
+        title = f"Suggested top {len(recommended_df)} stocks to buy:"
+        logger.info(f"\n{predict_table.get_string(title=title)}")
 
     wandb.log({"daily_predictions": wandb_table})
 

@@ -33,6 +33,7 @@ This project is provided for **research and demonstration purposes only** and do
 ```bash 
 git clone https://github.com/Beryex/ML4Investment.git --depth 1
 cd ML4Investment
+git checkout c45bacce5fbe8f12873077594acd790d8df7f548 # For reproduce of this README.md result
 ```
 2. Set up environment
 ```bash 

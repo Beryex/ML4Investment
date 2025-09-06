@@ -182,3 +182,4 @@ cython_debug/
 ml4investment/result/*
 ml4investment/wandb/*
 ml4investment/tokens.json
+ml4investment/data/*

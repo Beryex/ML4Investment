@@ -22,6 +22,7 @@ from ml4investment.utils.model_training import (
     optimize_data_sampling_proportion,
     optimize_features,
     optimize_model_hyperparameters,
+    validate_model,
 )
 from ml4investment.utils.utils import set_random_seed
 
@@ -57,8 +58,6 @@ def train(
         y_train,
         X_validate,
         y_validate,
-        X_validate_dict,
-        y_validate_dict,
         process_feature_config,
     ) = process_features_for_train_and_validate(
         daily_features_data,
@@ -89,9 +88,6 @@ def train(
             logger.info("Successfully loaded features.")
             X_train = X_train[optimal_features]
             X_validate = X_validate[optimal_features]
-            for i in range(len(X_validate_dict)):
-                for stock, data in X_validate_dict[i].items():
-                    X_validate_dict[i][stock] = data[optimal_features]
 
         except Exception as e:
             logger.warning(
@@ -102,7 +98,11 @@ def train(
 
     if args.optimize_model_hyperparameters:
         logger.info("Optimize model hyperparameters from the scratch")
-        optimal_model_hyperparams = None
+        optimal_model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
+        optimal_model_hyperparams.update({"seed": seed})
+        optimal_model_hyperparams.update(
+            {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
+        )
     else:
         try:
             logger.info(
@@ -168,9 +168,6 @@ def train(
         )
         X_train = X_train[optimal_features]
         X_validate = X_validate[optimal_features]
-        for i in range(len(X_validate_dict)):
-            for stock, data in X_validate_dict[i].items():
-                X_validate_dict[i][stock] = data[optimal_features]
 
     """ 6. Optimize the model hyperparameters if required """
     if args.optimize_model_hyperparameters:
@@ -185,31 +182,49 @@ def train(
             verbose=args.verbose,
         )
 
-    """ 7. Train the final model and apply prediction stock optimization if required """
+    """ 7. Train, validate the final model and apply prediction stock optimization if required """
+    final_model = model_training(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        categorical_features=settings.CATEGORICAL_FEATURES,
+        model_hyperparams=optimal_model_hyperparams,
+    )
+
     (
-        final_model,
-        predict_stock_list,
         valid_mae,
         valid_mse,
         valid_sign_acc,
         valid_precision,
         valid_recall,
         valid_f1,
-        valid_gain,
-    ) = model_training(
-        X_train,
-        y_train,
+        vaild_average_daily_gain,
+        vaild_overall_gain,
+        sorted_stocks,
+    ) = validate_model(
+        final_model,
         X_validate,
         y_validate,
-        X_validate_dict,
-        y_validate_dict,
-        categorical_features=settings.CATEGORICAL_FEATURES,
-        model_hyperparams=optimal_model_hyperparams,
         target_stock_list=target_stock_list,
-        optimize_predict_stocks=args.optimize_predict_stocks,
-        seed=seed,
         verbose=args.verbose,
     )
+
+    if args.optimize_predict_stocks:
+        logger.info("Begin predict stocks optimization")
+        logger.info(
+            f"Using average actual gain as the predict stocks optimization metric "
+            f"with target number {settings.PREDICT_STOCK_NUMBER}"
+        )
+
+        predict_stock_list = sorted_stocks[: settings.PREDICT_STOCK_NUMBER]
+        logger.info(
+            f"Selected {len(predict_stock_list)} stocks for prediction: "
+            f"{', '.join(predict_stock_list)}"
+        )
+    else:
+        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
+        predict_stock_list = target_stock_list
 
     """ 8. Save all results"""
     os.makedirs(os.path.dirname(args.save_process_feature_config_pth), exist_ok=True)
@@ -258,7 +273,8 @@ def train(
             "valid_precision": valid_precision,
             "valid_recall": valid_recall,
             "valid_f1": valid_f1,
-            "valid_gain": valid_gain,
+            "valid_average_daily_gain": vaild_average_daily_gain,
+            "valid_overall_gain": vaild_overall_gain,
         }
     )
 

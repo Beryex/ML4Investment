@@ -9,10 +9,8 @@ import wandb
 from wandb.sdk.wandb_run import Run
 
 from ml4investment.config.global_settings import settings
-from ml4investment.utils.feature_engineering import (
-    calculate_features,
-    process_features_for_backtest,
-)
+from ml4investment.utils.feature_calculating import calculate_features
+from ml4investment.utils.feature_processing import process_features_for_backtest
 from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.utils import get_detailed_static_result, set_random_seed
 
@@ -21,7 +19,7 @@ def backtest(
     run: Run,
     train_stock_list: list,
     predict_stock_list: list,
-    fetched_data: dict,
+    fetched_data_df: pd.DataFrame,
     process_feature_config: dict,
     selected_features: dict,
     model: lgb.Booster,
@@ -32,16 +30,15 @@ def backtest(
     logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
     set_random_seed(seed)
 
-    backtest_data = {}
     train_data_start_date = settings.TRAINING_DATA_START_DATE
-    logger.info("Load input fetched data")
-    for stock in train_stock_list:
-        backtest_data[stock] = fetched_data[stock].loc[train_data_start_date:]
+    logger.info(f"Load input fetched data, starting from {train_data_start_date}")
+    train_data_df = fetched_data_df[fetched_data_df['stock_code'].isin(train_stock_list)]
+    backtest_data_df = train_data_df.loc[train_data_start_date:]
 
-    daily_features_data = calculate_features(backtest_data)
+    daily_features_df = calculate_features(backtest_data_df)
 
     X_backtest, y_backtest = process_features_for_backtest(
-        daily_features_data, process_feature_config, predict_stock_list
+        daily_features_df, process_feature_config, predict_stock_list
     )
 
     X_backtest = X_backtest[selected_features]
@@ -94,7 +91,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
     parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl")
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
 
     parser.add_argument(
         "--process_feature_config_pth",
@@ -115,7 +112,7 @@ if __name__ == "__main__":
 
     train_stock_list = json.load(open(args.train_stocks, "r"))["train_stocks"]
     predict_stock_list = json.load(open(args.predict_stocks, "r"))["predict_stocks"]
-    fetched_data = pickle.load(open(args.fetched_data_pth, "rb"))
+    fetched_data_df = pd.read_parquet(args.fetched_data_pth)
     process_feature_config = pickle.load(open(args.process_feature_config_pth, "rb"))
     selected_features = json.load(open(args.features_pth, "r"))["features"]
     model = lgb.Booster(model_file=args.model_pth)
@@ -127,7 +124,7 @@ if __name__ == "__main__":
         run,
         train_stock_list,
         predict_stock_list,
-        fetched_data,
+        fetched_data_df,
         process_feature_config,
         selected_features,
         model,

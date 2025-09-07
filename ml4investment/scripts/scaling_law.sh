@@ -9,7 +9,7 @@ export WANDB_RUN_GROUP="scaling-law-$(date +%Y%m%d-%H%M%S)"
 echo "WANDB_RUN_GROUP set to: ${WANDB_RUN_GROUP}"
 
 # Define the sample sizes to iterate over
-START_YEARS="2023 2022 2021 2020 2019 2018 2017 2016 2015"
+START_YEARS="2023 2022 2021 2020 2019 2018 2017 2016"
 
 for start_year in $START_YEARS; do
     echo "================================================="

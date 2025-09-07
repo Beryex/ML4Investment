@@ -17,7 +17,7 @@ class Settings:
     DATA_PER_DAY: int = 13
 
     # Feature Engineering
-    CATEGORICAL_FEATURES: List[str] = ["stock_id", "stock_sector"]
+    CATEGORICAL_FEATURES: List[str] = ["stock_id", "sector_id"]
     SECTOR_ID_MAP: Dict[str, int] = {
         "Technology": 1,
         "Healthcare": 2,
@@ -34,13 +34,13 @@ class Settings:
     }
     STOCK_SECTOR_ID_MAP_PTH: str = "config/stock_sector_id_mapping.json"
     STOCK_SECTOR_ID_MAP: Dict[str, int] = json.load(open(STOCK_SECTOR_ID_MAP_PTH, "r"))
-    APPLY_CLIP: bool = True
-    APPLY_SCALE: bool = True
+    APPLY_CLIP: str | None = os.getenv("APPLY_CLIP", None)
+    APPLY_SCALE: str | None = os.getenv("APPLY_SCALE", None)
     CLIP_LOWER_QUANTILE_RATIO: float = 0.005
     CLIP_UPPER_QUANTILE_RATIO: float = 0.995
 
     # Model Training
-    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2013-11-30")
+    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2023-11-30")
     TRAINING_DATA_END_DATE: str = "2024-11-30"
     VALIDATION_DATA_START_DATE: str = "2024-12-01"
     VALIDATION_DATA_END_DATE: str = "2025-05-31"
@@ -50,7 +50,6 @@ class Settings:
     DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
     HYPERPARAMETER_SEARCH_LIMIT: int = 100
     FEATURE_SEARCH_LIMIT: int = 100
-    PREDICT_STOCK_SEARCH_LIMIT: int = 20
     FIXED_TRAINING_CONFIG: dict = {
         "objective": "regression_l1",
         "metric": "mae",

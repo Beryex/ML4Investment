@@ -12,10 +12,8 @@ from wandb.sdk.wandb_run import Run
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
-from ml4investment.utils.feature_engineering import (
-    calculate_features,
-    process_features_for_train_and_validate,
-)
+from ml4investment.utils.feature_calculating import calculate_features
+from ml4investment.utils.feature_processing import process_features_for_train_and_validate
 from ml4investment.utils.logging import configure_logging, setup_wandb
 from ml4investment.utils.model_training import (
     model_training,
@@ -31,7 +29,7 @@ def train(
     run: Run,
     train_stock_list: list,
     target_stock_list: list,
-    fetched_data: dict,
+    fetched_data_df: pd.DataFrame,
     seed: int,
 ):
     """Train model based on the given stocks"""
@@ -40,18 +38,17 @@ def train(
     set_random_seed(seed)
 
     """ 1. Load necessary data """
-    train_data = {}
     train_data_start_date = settings.TRAINING_DATA_START_DATE
     validation_data_end_date = settings.VALIDATION_DATA_END_DATE
     logger.info(
         f"Load input fetched data, starting from {train_data_start_date} "
         f"to {validation_data_end_date}"
     )
-    for stock in train_stock_list:
-        train_data[stock] = fetched_data[stock].loc[train_data_start_date:validation_data_end_date]
+    train_data_df = fetched_data_df[fetched_data_df['stock_code'].isin(train_stock_list)]
+    train_data_df = train_data_df.loc[train_data_start_date:validation_data_end_date]
 
     """ 2. Calculate and process features for all data used """
-    daily_features_data = calculate_features(train_data)
+    daily_features_df = calculate_features(train_data_df)
 
     (
         X_train,
@@ -60,11 +57,12 @@ def train(
         y_validate,
         process_feature_config,
     ) = process_features_for_train_and_validate(
-        daily_features_data,
+        daily_features_df,
         apply_clip=settings.APPLY_CLIP,
         apply_scale=settings.APPLY_SCALE,
         seed=seed,
     )
+    X_train.to_parquet("X_train_new.parquet", index=True)
 
     """ 3. Load data sampling proportion, features and hyperparameters """
     if args.optimize_features:
@@ -114,10 +112,7 @@ def train(
             )
 
     """ 4. Optimize data sampling proportion if required """
-    if (
-        args.optimize_data_sampling_proportion
-        or not Path(args.data_sampling_proportion_pth).exists()
-    ):
+    if args.optimize_data_sampling_proportion:
         logger.info("Optimize data sampling proportion from the scratch")
         optimal_data_sampling_proportion = optimize_data_sampling_proportion(
             X_train,
@@ -132,8 +127,27 @@ def train(
             verbose=args.verbose,
         )
     else:
-        logger.info("Load input data sampling proportion")
-        optimal_data_sampling_proportion = json.load(open(args.data_sampling_proportion_pth, "r"))
+        try:
+            logger.info(
+                f"Attempting to load input data sampling proportion "
+                f"from {args.data_sampling_proportion_pth}"
+            )
+            optimal_data_sampling_proportion = json.load(
+                open(args.data_sampling_proportion_pth, "r")
+            )
+            logger.info("Successfully loaded data sampling proportion.")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to load data sampling proportion "
+                f"from {args.data_sampling_proportion_pth}. "
+                f"Error: {e}. "
+                f"Falling back to use all data."
+            )
+            optimal_data_sampling_proportion = {
+                stock: 1.0 for stock in train_stock_list 
+                if stock not in settings.SELECTIVE_ETF
+            }
 
     X_train, y_train = sample_training_data(
         X_train,
@@ -287,7 +301,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default="config/train_stocks.json")
     parser.add_argument("--target_stocks", type=str, default="config/target_stocks.json")
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.pkl")
+    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
     parser.add_argument(
         "--optimize_data_sampling_proportion",
         "-odsp",
@@ -347,7 +361,7 @@ if __name__ == "__main__":
 
     train_stock_list = json.load(open(args.train_stocks, "r"))["train_stocks"]
     target_stock_list = json.load(open(args.target_stocks, "r"))["target_stocks"]
-    fetched_data = pickle.load(open(args.fetched_data_pth, "rb"))
+    fetched_data_df = pd.read_parquet(args.fetched_data_pth)
     seed = args.seed
 
     activated_optimizations = [
@@ -378,4 +392,4 @@ if __name__ == "__main__":
 
     run = setup_wandb(config=vars(args))
 
-    train(run, train_stock_list, target_stock_list, fetched_data, seed)
+    train(run, train_stock_list, target_stock_list, fetched_data_df, seed)

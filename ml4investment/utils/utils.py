@@ -36,7 +36,7 @@ def set_random_seed(seed: int) -> None:
 
 def stock_code_to_id(stock_code: str) -> int:
     """Change the stock string to the sum of ASCII value of each char within the stock code"""
-    return sum(ord(c) * 256**i for i, c in enumerate(reversed(stock_code)))
+    return int(sum(ord(c) * 256**i for i, c in enumerate(reversed(stock_code))))
 
 
 def id_to_stock_code(code_id: int) -> str:
@@ -105,7 +105,7 @@ def get_detailed_static_result(
     stock_metrics = defaultdict(dict)
 
     for stock_id, stock_df in results_df.groupby("stock_id", observed=True):
-        stock_code = id_to_stock_code(cast(int, stock_id))
+        stock_code = id_to_stock_code(int(stock_id))    # type: ignore
         if stock_code not in predict_stock_list:
             continue
 

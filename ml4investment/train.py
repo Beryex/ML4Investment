@@ -62,7 +62,6 @@ def train(
         apply_scale=settings.APPLY_SCALE,
         seed=seed,
     )
-    X_train.to_parquet("X_train_new.parquet", index=True)
 
     """ 3. Load data sampling proportion, features and hyperparameters """
     if args.optimize_features:

@@ -75,7 +75,8 @@ dependencies = [
     "yfinance>=0.2.63",
     "wandb==0.21.1",
     "schwabdev==2.5.0",
-    "python-dotenv==1.1.1"
+    "python-dotenv==1.1.1",
+    "pyarrow==21.0.0"
 ]
 
 [project.optional-dependencies]

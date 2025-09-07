@@ -150,9 +150,11 @@ def process_features_for_train_and_validate(
     X_train.pop('stock_code')
     X_validate.pop('stock_code')
 
-    shuffled = shuffle(X_train, y_train, random_state=seed)
-    assert shuffled is not None
-    X_train, y_train = shuffled
+    combined_train_df = pd.concat([X_train, y_train], axis=1)
+    combined_train_df.sort_index(inplace=True)
+    shuffled_df = combined_train_df.sample(frac=1, random_state=seed)
+    y_train = shuffled_df['Target']
+    X_train = shuffled_df.drop(columns=['Target'])
     assert isinstance(X_train, pd.DataFrame)
     assert isinstance(X_validate, pd.DataFrame)
     assert isinstance(y_train, pd.Series)
@@ -254,10 +256,11 @@ def process_features_for_predict(
     predict_df["sector_id"] = predict_df["sector_id"].astype(config_data["cat_sector_id_type"])
 
     predict_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    predict_df.dropna(inplace=True)
         
     feature_cols = [col for col in predict_df.columns if col != "Target"]
     X_predict = predict_df[feature_cols]
+
+    X_predict.dropna(inplace=True)
 
     """ Post-processing features """
     boolean_cols = X_predict.select_dtypes(include="bool").columns.tolist()

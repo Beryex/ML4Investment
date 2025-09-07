@@ -256,11 +256,11 @@ def fetch_data_from_schwab(
     stocks: list[str],
     period_days: int = settings.FETCH_PERIOD_DAYS,
     interval_mins: int = settings.DATA_INTERVAL_MINS,
-) -> dict[str, pd.DataFrame]:
+) -> pd.DataFrame:
     """Fetch trading day data from Schwab"""
     end_date = datetime.datetime.now(datetime.timezone.utc)
     start_date = end_date - datetime.timedelta(days=period_days)
-    fetched_data: dict[str, pd.DataFrame] = {}
+    fetched_data_list = []
 
     tasks = [(stock, client, start_date, end_date, interval_mins) for stock in stocks]
     num_processes = min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)
@@ -279,17 +279,22 @@ def fetch_data_from_schwab(
                 logger.warning(m)
             if daily_df is None:
                 continue
-            fetched_data[stock] = daily_df
 
-    return fetched_data
+            daily_df["stock_code"] = stock
+
+            fetched_data_list.append(daily_df)
+
+    fetched_data_df = pd.concat(fetched_data_list)
+
+    return fetched_data_df
 
 
 def load_local_data(
     stocks: list[str], base_dir: str, interval_mins: int = settings.DATA_INTERVAL_MINS
-) -> dict[str, pd.DataFrame]:
+) -> pd.DataFrame:
     """Load the local data for the given stocks"""
     logger.info("Loading local data")
-    fetched_data: dict[str, pd.DataFrame] = {}
+    fetched_data_list = []
 
     base_dir_path = Path(base_dir)
     if not base_dir_path.is_dir():
@@ -368,36 +373,51 @@ def load_local_data(
             if cur_processed_df is None:
                 continue
 
-            fetched_data[stock] = cur_processed_df
+            cur_processed_df["stock_code"] = stock
+            cur_processed_df.index.name = 'datetime'
+            
+            fetched_data_list.append(cur_processed_df)
 
-    return fetched_data
+    fetched_data_df = pd.concat(fetched_data_list)
+
+    return fetched_data_df
 
 
-def merge_fetched_data(existing_data: dict, new_data: dict) -> tuple[dict, dict]:
+def merge_fetched_data(
+        existing_data: pd.DataFrame, 
+        new_data: pd.DataFrame
+    ) -> pd.DataFrame:
     """Merge newly fetched data with previously saved data."""
-    merged = existing_data.copy()
-    train_data = {}
+    if new_data.empty:
+        logger.info("New data is empty, no merge needed.")
+        return existing_data
+    
+    if existing_data.empty:
+        logger.info("Existing data is empty, using new data directly.")
+        return new_data
+
     logger.info(
-        f"Starting merge: {len(new_data)} stocks to merge into existing {len(existing_data)}"
+        f"Starting merge: Merging data for {new_data['stock_code'].nunique()} stocks into "
+        f"existing data for {existing_data['stock_code'].nunique()} stocks."
+    )
+    original_len = len(existing_data)
+    
+    combined_df = pd.concat([existing_data, new_data])
+
+    index_name = combined_df.index.name
+
+    combined_df = combined_df.reset_index()
+
+    merged_df = combined_df.drop_duplicates(subset=['stock_code', index_name], keep='last')
+
+    merged_df = merged_df.set_index(index_name).sort_index()
+
+    logger.info(
+        f"Merge complete. Total rows changed: {original_len} -> {len(merged_df)}. "
+        f"Total stocks after merge: {merged_df['stock_code'].nunique()}."
     )
 
-    for stock in new_data:
-        if stock in existing_data:
-            # Concatenate and remove duplicates by index (timestamp)
-            original_len = len(existing_data[stock])
-            merged_df = pd.concat([existing_data[stock], new_data[stock]])
-            merged_df = merged_df[~merged_df.index.duplicated(keep="last")].sort_index()
-            merged_len = len(merged_df)
-            logger.info(f"Merging existing stock: {stock} with {merged_len - original_len}")
-        else:
-            merged_df = new_data[stock]
-            logger.info(f"Adding new stock: {stock} with {len(new_data[stock])} rows")
-
-        merged[stock] = merged_df
-        train_data[stock] = merged_df
-
-    logger.info(f"Merging complete. Total stocks after merge: {len(merged)}")
-    return merged, train_data
+    return merged_df
 
 
 def sample_training_data(

@@ -1,13 +1,10 @@
 import logging
 from multiprocessing import Pool, cpu_count
-from typing import Any
 
 import numpy as np
 import pandas as pd
 import pandas_market_calendars as mcal
 from pandas.tseries.offsets import CustomBusinessDay
-from sklearn.preprocessing import RobustScaler
-from sklearn.utils import shuffle
 from tqdm import tqdm
 
 from ml4investment.config.global_settings import settings
@@ -284,11 +281,11 @@ def calculate_one_stock_features(task: pd.DataFrame) -> pd.DataFrame:
     rename_map = {
         "stock_code_first": "stock_code",
         "stock_id_first": "stock_id",
-        "sector_id_first": "sector_id"
+        "sector_id_first": "sector_id",
     }
     daily_df.rename(columns=rename_map, inplace=True)
-    daily_df["stock_id"] = daily_df["stock_id"].astype('Int64')
-    daily_df["sector_id"] = daily_df["sector_id"].astype('Int64')
+    daily_df["stock_id"] = daily_df["stock_id"].astype("Int64")
+    daily_df["sector_id"] = daily_df["sector_id"].astype("Int64")
 
     # === Daily Targets ===
     prev_close_daily = daily_df["Close_last"].shift(1)
@@ -748,47 +745,54 @@ def calculate_features(df: pd.DataFrame) -> pd.DataFrame:
     daily_df_combined.sort_index(inplace=True)
 
     # === Cross-Stock Feature: After All Stocks Are Done ===
-    daily_df_combined['Relative_Return_Rank'] = (
-        daily_df_combined.groupby(level=0)['Return_1d'].rank(pct=True)
-    )
+    daily_df_combined["Relative_Return_Rank"] = daily_df_combined.groupby(level=0)[
+        "Return_1d"
+    ].rank(pct=True)
 
     features_to_rank = [
-        "Volatility_5d", "Volume_MA_ratio", "MA5_Deviation",
-        "OC_Momentum", "Overnight_Gap_Daily", "CMF_20d",
+        "Volatility_5d",
+        "Volume_MA_ratio",
+        "MA5_Deviation",
+        "OC_Momentum",
+        "Overnight_Gap_Daily",
+        "CMF_20d",
     ]
     for feature in features_to_rank:
         if feature in daily_df_combined.columns:
-            daily_df_combined[f'Rank_{feature}'] = (
-                daily_df_combined.groupby(level=0)[feature].rank(pct=True)
-            )
+            daily_df_combined[f"Rank_{feature}"] = daily_df_combined.groupby(level=0)[
+                feature
+            ].rank(pct=True)
 
     # === Embed ETF Features into other stocks ===
     etf_list = [
-        stock for stock in daily_df_combined['stock_code'].unique() 
+        stock
+        for stock in daily_df_combined["stock_code"].unique()
         if stock in settings.SELECTIVE_ETF
     ]
-    
+
     features_to_embed_from_etfs = [
-        "Return_1d", "Return_5d", "Volatility_5d", "RSI_14d",
-        "MACD_hist_daily", "Volume_MA_ratio", "ADX_14d", "CMF_20d",
+        "Return_1d",
+        "Return_5d",
+        "Volatility_5d",
+        "RSI_14d",
+        "MACD_hist_daily",
+        "Volume_MA_ratio",
+        "ADX_14d",
+        "CMF_20d",
     ]
 
-    etf_data = daily_df_combined[daily_df_combined['stock_code'].isin(etf_list)]
-    etf_data_indexed = etf_data.set_index('stock_code', append=True)
+    etf_data = daily_df_combined[daily_df_combined["stock_code"].isin(etf_list)]
+    etf_data_indexed = etf_data.set_index("stock_code", append=True)
     etf_features_subset = etf_data_indexed[features_to_embed_from_etfs]
-    etf_features_wide = etf_features_subset.unstack('stock_code')
+    etf_features_wide = etf_features_subset.unstack("stock_code")
     etf_features_wide.columns = [
         f"{stock}_{feature}" for feature, stock in etf_features_wide.columns
     ]
 
-    stocks_only_df = daily_df_combined[~daily_df_combined['stock_code'].isin(etf_list)].copy()
+    stocks_only_df = daily_df_combined[~daily_df_combined["stock_code"].isin(etf_list)].copy()
 
     final_df = pd.merge(
-        stocks_only_df,
-        etf_features_wide,
-        left_index=True, 
-        right_index=True,
-        how='left'
+        stocks_only_df, etf_features_wide, left_index=True, right_index=True, how="left"
     )
 
     return final_df

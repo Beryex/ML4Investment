@@ -2,7 +2,6 @@ import argparse
 import json
 import logging
 import os
-import pickle
 
 import pandas as pd
 
@@ -94,7 +93,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--load_local_data", "-lld", action="store_true", default=False)
     parser.add_argument("--local_data_pth", "-ldp", type=str)
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
+    parser.add_argument(
+        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
+    )
     parser.add_argument(
         "--get_stock_sector_id_mapping",
         "-gssim",

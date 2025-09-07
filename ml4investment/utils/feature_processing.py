@@ -4,10 +4,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import RobustScaler
-from sklearn.utils import shuffle
 
 from ml4investment.config.global_settings import settings
-from ml4investment.utils.utils import stock_code_to_id
 
 pd.set_option("future.no_silent_downcasting", True)
 
@@ -19,7 +17,7 @@ def _apply_clipping_and_scaling(
     numerical_cols: list[str],
     config: dict[str, Any],
 ) -> tuple[pd.DataFrame, int]:
-    """ Apply clipping and scaling based on the provided configuration """
+    """Apply clipping and scaling based on the provided configuration"""
     X_processed = X.copy()
     apply_clip = config.get("apply_clip")
     apply_scale = config.get("apply_scale")
@@ -28,16 +26,22 @@ def _apply_clipping_and_scaling(
     if apply_clip == "global":
         bounds = config.get("bounds", {}).get("global")
         if bounds:
-            X_processed[numerical_cols] = X_processed[numerical_cols].clip(bounds["lower"], bounds["upper"], axis=1)
+            X_processed[numerical_cols] = X_processed[numerical_cols].clip(
+                bounds["lower"], bounds["upper"], axis=1
+            )
     elif apply_clip == "stock":
+
         def clip_stock(group):
             stock_code = group["stock_code"].iloc[0]
             stock_bounds = config.get("bounds", {}).get(stock_code)
             if stock_bounds:
-                group[numerical_cols] = group[numerical_cols].clip(stock_bounds["lower"], stock_bounds["upper"], axis=1)
+                group[numerical_cols] = group[numerical_cols].clip(
+                    stock_bounds["lower"], stock_bounds["upper"], axis=1
+                )
             return group
+
         X_processed = X_processed.groupby("stock_code").apply(clip_stock)
-    
+
     data_after_clip = X_processed[numerical_cols]
     clipped_mask = (data_before_clip != data_after_clip).any(axis=1)
     clipped_rows_count = clipped_mask.sum()
@@ -47,14 +51,16 @@ def _apply_clipping_and_scaling(
         if scaler:
             X_processed[numerical_cols] = scaler.transform(X_processed[numerical_cols])
     elif apply_scale == "stock":
+
         def scale_stock(group):
             stock_code = group["stock_code"].iloc[0]
             scaler = config.get("scaler", {}).get(stock_code)
             if scaler:
                 group[numerical_cols] = scaler.transform(group[numerical_cols])
             return group
+
         X_processed = X_processed.groupby("stock_code").apply(scale_stock)
-    
+
     assert isinstance(X_processed, pd.DataFrame)
 
     return X_processed, clipped_rows_count
@@ -62,8 +68,8 @@ def _apply_clipping_and_scaling(
 
 def process_features_for_train_and_validate(
     daily_features_df: pd.DataFrame,
-    apply_clip: str | None = None,
-    apply_scale: str | None = None,
+    apply_clip: str = "skip",
+    apply_scale: str = "skip",
     seed: int = 42,
 ) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict]:
     """Process Data, including washing, removing Nan, scaling and spliting for training"""
@@ -113,7 +119,7 @@ def process_features_for_train_and_validate(
     boolean_cols = X_train.select_dtypes(include="bool").columns.tolist()
     categorical_cols = settings.CATEGORICAL_FEATURES
     numerical_cols = [col for col in X_train.columns if col not in boolean_cols + categorical_cols]
-    
+
     logger.info(f"Clipping method: {apply_clip}")
     logger.info(f"Scaling method: {apply_scale}")
 
@@ -122,13 +128,13 @@ def process_features_for_train_and_validate(
         upper_bound = X_train[numerical_cols].quantile(settings.CLIP_UPPER_QUANTILE_RATIO)
         process_feature_config["bounds"] = {"global": {"lower": lower_bound, "upper": upper_bound}}
     elif apply_clip == "stock":
-        bounds = X_train.groupby("stock_code")[numerical_cols].quantile( 
-            [settings.CLIP_LOWER_QUANTILE_RATIO, settings.CLIP_UPPER_QUANTILE_RATIO] # type: ignore
+        bounds = X_train.groupby("stock_code")[numerical_cols].quantile(
+            [settings.CLIP_LOWER_QUANTILE_RATIO, settings.CLIP_UPPER_QUANTILE_RATIO]  # type: ignore
         )
         process_feature_config["bounds"] = {
             stock: {
                 "lower": bounds.loc[(stock, settings.CLIP_LOWER_QUANTILE_RATIO)],  # type: ignore
-                "upper": bounds.loc[(stock, settings.CLIP_UPPER_QUANTILE_RATIO)]   # type: ignore
+                "upper": bounds.loc[(stock, settings.CLIP_UPPER_QUANTILE_RATIO)],  # type: ignore
             }
             for stock, _ in X_train.groupby("stock_code")
         }
@@ -142,36 +148,44 @@ def process_features_for_train_and_validate(
             for stock_code, group in X_train.groupby("stock_code")
         }
         process_feature_config["scaler"] = scalers
-    
-    X_train, train_clipped_rows_count = _apply_clipping_and_scaling(X_train, numerical_cols, process_feature_config)
-    X_validate, valid_clipped_rows_count = _apply_clipping_and_scaling(X_validate, numerical_cols, process_feature_config)
+
+    X_train, train_clipped_rows_count = _apply_clipping_and_scaling(
+        X_train, numerical_cols, process_feature_config
+    )
+    X_validate, valid_clipped_rows_count = _apply_clipping_and_scaling(
+        X_validate, numerical_cols, process_feature_config
+    )
     clipped_rows_count = train_clipped_rows_count + valid_clipped_rows_count
 
-    X_train.pop('stock_code')
-    X_validate.pop('stock_code')
+    X_train.pop("stock_code")
+    X_validate.pop("stock_code")
 
     combined_train_df = pd.concat([X_train, y_train], axis=1)
     combined_train_df.sort_index(inplace=True)
     shuffled_df = combined_train_df.sample(frac=1, random_state=seed)
-    y_train = shuffled_df['Target']
-    X_train = shuffled_df.drop(columns=['Target'])
+    y_train = shuffled_df["Target"]
+    X_train = shuffled_df.drop(columns=["Target"])
     assert isinstance(X_train, pd.DataFrame)
     assert isinstance(X_validate, pd.DataFrame)
     assert isinstance(y_train, pd.Series)
 
     assert X_train.isnull().sum().sum() == 0, "NaN values found in the final X_train."
-    assert np.isinf(X_train.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_train."
+    assert np.isinf(X_train.select_dtypes(include=np.number)).sum().sum() == 0, (
+        "Infinity values found in the final X_train."
+    )
 
     assert X_validate.isnull().sum().sum() == 0, "NaN values found in the final X_validate."
-    assert np.isinf(X_validate.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_validate."
+    assert np.isinf(X_validate.select_dtypes(include=np.number)).sum().sum() == 0, (
+        "Infinity values found in the final X_validate."
+    )
 
     final_data_points = len(X_train) + len(X_validate)
     points_dropped = original_data_points - final_data_points
-    
+
     percentage_dropped = (points_dropped / original_data_points) * 100
     percentage_clipped = (clipped_rows_count / original_data_points) * 100
 
-    logger.info(f"Feature processing complete")
+    logger.info("Feature processing complete")
     logger.info(f"  Original data points: {original_data_points}")
     logger.info(f"  Final data points: {final_data_points}")
     logger.info(f"  Dropped {points_dropped} points: ({percentage_dropped:.2f}%)")
@@ -191,15 +205,17 @@ def process_features_for_backtest(
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Process Data, including washing, removing Nan, scaling and spliting for backtest"""
     logger.info("Begin feature processing for backtesting...")
-    
+
     """ Preprocessing Features"""
     test_start = pd.to_datetime(settings.TESTING_DATA_START_DATE).tz_localize("America/New_York")
-    test_end = pd.to_datetime(settings.TESTING_DATA_END_DATE or pd.Timestamp.now(tz="America/New_York"))
+    test_end = pd.to_datetime(
+        settings.TESTING_DATA_END_DATE or pd.Timestamp.now(tz="America/New_York")
+    )
     logger.info(f"Using data from {test_start} to {test_end} for backtesting.")
 
     mask = (daily_features_df.index >= test_start) & (daily_features_df.index <= test_end)
-    mask &= daily_features_df['stock_code'].isin(predict_stock_list)
-        
+    mask &= daily_features_df["stock_code"].isin(predict_stock_list)
+
     backtest_df = daily_features_df[mask].copy()
     original_data_points = len(backtest_df)
 
@@ -216,22 +232,28 @@ def process_features_for_backtest(
     """ Post-processing features """
     boolean_cols = X_backtest.select_dtypes(include="bool").columns.tolist()
     categorical_cols = settings.CATEGORICAL_FEATURES
-    numerical_cols = [col for col in X_backtest.columns if col not in boolean_cols + categorical_cols]
-    
-    X_backtest, clipped_rows_count = _apply_clipping_and_scaling(X_backtest, numerical_cols, config_data)
+    numerical_cols = [
+        col for col in X_backtest.columns if col not in boolean_cols + categorical_cols
+    ]
 
-    X_backtest.pop('stock_code')
+    X_backtest, clipped_rows_count = _apply_clipping_and_scaling(
+        X_backtest, numerical_cols, config_data
+    )
+
+    X_backtest.pop("stock_code")
 
     assert X_backtest.isnull().sum().sum() == 0, "NaN values found in the final X_backtest."
-    assert np.isinf(X_backtest.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_backtest."
+    assert np.isinf(X_backtest.select_dtypes(include=np.number)).sum().sum() == 0, (
+        "Infinity values found in the final X_backtest."
+    )
 
     final_data_points = len(X_backtest)
     points_dropped = original_data_points - final_data_points
-    
+
     percentage_dropped = (points_dropped / original_data_points) * 100
     percentage_clipped = (clipped_rows_count / original_data_points) * 100
 
-    logger.info(f"Feature processing complete")
+    logger.info("Feature processing complete")
     logger.info(f"  Original data points: {original_data_points}")
     logger.info(f"  Final data points: {final_data_points}")
     logger.info(f"  Dropped {points_dropped} points: ({percentage_dropped:.2f}%)")
@@ -247,16 +269,16 @@ def process_features_for_predict(
     logger.info("Begin feature processing for backtesting...")
 
     """ Preprocessing Features"""
-    latest_df = daily_features_df.groupby('stock_code').tail(1).copy()
+    latest_df = daily_features_df.groupby("stock_code").tail(1).copy()
     assert latest_df.index.min() == latest_df.index.max()
-    predict_df = latest_df[latest_df['stock_code'].isin(predict_stock_list)]
+    predict_df = latest_df[latest_df["stock_code"].isin(predict_stock_list)]
     original_data_points = len(predict_df)
 
     predict_df["stock_id"] = predict_df["stock_id"].astype(config_data["cat_stock_id_type"])
     predict_df["sector_id"] = predict_df["sector_id"].astype(config_data["cat_sector_id_type"])
 
     predict_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        
+
     feature_cols = [col for col in predict_df.columns if col != "Target"]
     X_predict = predict_df[feature_cols]
 
@@ -265,22 +287,28 @@ def process_features_for_predict(
     """ Post-processing features """
     boolean_cols = X_predict.select_dtypes(include="bool").columns.tolist()
     categorical_cols = settings.CATEGORICAL_FEATURES
-    numerical_cols = [col for col in X_predict.columns if col not in boolean_cols + categorical_cols]
+    numerical_cols = [
+        col for col in X_predict.columns if col not in boolean_cols + categorical_cols
+    ]
 
-    X_predict, clipped_rows_count = _apply_clipping_and_scaling(X_predict, numerical_cols, config_data)
-    
-    X_predict.pop('stock_code')
+    X_predict, clipped_rows_count = _apply_clipping_and_scaling(
+        X_predict, numerical_cols, config_data
+    )
+
+    X_predict.pop("stock_code")
 
     assert X_predict.isnull().sum().sum() == 0, "NaN values found in the final X_predict."
-    assert np.isinf(X_predict.select_dtypes(include=np.number)).sum().sum() == 0, "Infinity values found in the final X_predict."
+    assert np.isinf(X_predict.select_dtypes(include=np.number)).sum().sum() == 0, (
+        "Infinity values found in the final X_predict."
+    )
 
     final_data_points = len(X_predict)
     points_dropped = original_data_points - final_data_points
-    
+
     percentage_dropped = (points_dropped / original_data_points) * 100
     percentage_clipped = (clipped_rows_count / original_data_points) * 100
 
-    logger.info(f"Feature processing complete")
+    logger.info("Feature processing complete")
     logger.info(f"  Original data points: {original_data_points}")
     logger.info(f"  Final data points: {final_data_points}")
     logger.info(f"  Dropped {points_dropped} points: ({percentage_dropped:.2f}%)")

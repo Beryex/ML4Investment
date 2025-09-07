@@ -105,7 +105,7 @@ def get_detailed_static_result(
     stock_metrics = defaultdict(dict)
 
     for stock_id, stock_df in results_df.groupby("stock_id", observed=True):
-        stock_code = id_to_stock_code(int(stock_id))    # type: ignore
+        stock_code = id_to_stock_code(int(stock_id))  # type: ignore
         if stock_code not in predict_stock_list:
             continue
 
@@ -190,7 +190,9 @@ def get_detailed_static_result(
 
     average_daily_gain = gain_actual ** (1 / day_number) if day_number > 0 else 1.0
     sorted_stocks = sorted(
-        stock_metrics.keys(), key=lambda s: stock_metrics[s]["overall_gain"], reverse=True
+        stock_metrics.keys(),
+        key=lambda s: stock_metrics[s][settings.PREDICT_STOCK_OPTIMIZE_METRIC],
+        reverse=True,
     )
 
     start_date = X.index.min()

@@ -42,7 +42,8 @@ def model_training(
     final_model.best_iteration = metric_logger_cb.optimal_iteration
     logger.info(
         f"Final model training completed. Optimal iteration on validation set: "
-        f"{final_model.best_iteration} with lowest MAE: {metric_logger_cb.optimal_score}"
+        f"{final_model.best_iteration} with {settings.OPTIMIZE_METRIC}: "
+        f"{metric_logger_cb.optimal_score}"
     )
 
     logger.info("Model training completed")
@@ -137,14 +138,14 @@ def optimize_data_sampling_proportion(
             callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
         )
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_valid_mae = cur_metric_logger_cb.optimal_score
+        cur_valid_score = cur_metric_logger_cb.optimal_score
         logger.info(
             f"Current trial model training completed. "
             f"Optimal iteration on validation set: {cur_model.best_iteration} "
-            f"with lowest MAE: {cur_valid_mae}"
+            f"with {settings.OPTIMIZE_METRIC}: {cur_valid_score}"
         )
 
-        return cur_valid_mae
+        return cur_valid_score
 
     logger.info("Optimizing data sampling proportion...")
     study = optuna.create_study(
@@ -170,10 +171,10 @@ def optimize_data_sampling_proportion(
 
     optimal_trial = study.best_trial
     optimal_data_sampling_proportion = optimal_trial.params.copy()
-    optimal_valid_mae = optimal_trial.value
+    optimal_value = optimal_trial.value
 
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
-    logger.info(f"  Optimal Trial Value (Valid MAE): {optimal_valid_mae:.4f}")
+    logger.info(f"  Optimal Trial Value (Valid {settings.OPTIMIZE_METRIC}): {optimal_value:.4f}")
     if verbose:
         logger.info(
             f"  Optimal Trial Data Sampling Proportion: {optimal_data_sampling_proportion}"
@@ -234,15 +235,15 @@ def optimize_features(
             callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
         )
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_valid_mae = cur_metric_logger_cb.optimal_score
+        cur_valid_score = cur_metric_logger_cb.optimal_score
 
         if verbose:
             logger.info(
                 f"Trial {trial.number} with {len(candidate_features)} features "
-                f"resulted in MAE: {cur_valid_mae:.6f}"
+                f"resulted in {settings.OPTIMIZE_METRIC}: {cur_valid_score:.6f}"
             )
 
-        return cur_valid_mae
+        return cur_valid_score
 
     study = optuna.create_study(
         study_name="Model Feature Selection Optimization",
@@ -278,14 +279,16 @@ def optimize_features(
         if best_params.get(feature, 0.0) >= 0.5:
             optimal_features.append(feature)
 
-    optimal_valid_mae = study.best_trial.value
+    optimal_value = study.best_trial.value
     original_feature_number = len(all_features)
 
     logger.info(
         f"Final selected {len(optimal_features)} features after Optuna search, "
         f"select ratio: {len(optimal_features) / original_feature_number:.2f}"
     )
-    logger.info(f"Final Valid MAE after feature selection: {optimal_valid_mae:.6f}")
+    logger.info(
+        f"Final Valid {settings.OPTIMIZE_METRIC} after feature selection: {optimal_value:.6f}"
+    )
     if verbose:
         logger.info(f"Optimal features: {optimal_features}")
 
@@ -340,14 +343,14 @@ def optimize_model_hyperparameters(
             callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
         )
         cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_valid_mae = cur_metric_logger_cb.optimal_score
+        cur_value = cur_metric_logger_cb.optimal_score
         logger.info(
             f"Current trial model training completed. "
             f"Optimal iteration on validation set: {cur_model.best_iteration} "
-            f"with lowest MAE: {cur_valid_mae}"
+            f"with {settings.OPTIMIZE_METRIC}: {cur_value}"
         )
 
-        return cur_valid_mae
+        return cur_value
 
     logger.info("Begin hyperparameter optimization")
     study = optuna.create_study(
@@ -390,7 +393,7 @@ def optimize_model_hyperparameters(
         logger.info("Top 5 Best Trials Summary:")
         for i, trial in enumerate(completed_trials[:5]):
             logger.info(f"  Trial {trial.number} (Rank {i + 1}):")
-            logger.info(f"    - Value (MAE): {trial.value:.6f}")
+            logger.info(f"    - Value ({settings.OPTIMIZE_METRIC}): {trial.value:.6f}")
             logger.info("    - Params:")
             for param_name, param_value in trial.params.items():
                 if isinstance(param_value, float):
@@ -400,11 +403,11 @@ def optimize_model_hyperparameters(
 
     optimal_trial = study.best_trial
     optimal_params = optimal_trial.params.copy()
-    optimal_valid_mae = optimal_trial.value
+    optimal_value = optimal_trial.value
     optimal_params.update(cur_train_fixed_config)
 
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
-    logger.info(f"  Optimal Trial Value (Valid MAE): {optimal_valid_mae:.4f}")
+    logger.info(f"  Optimal Trial Value ({settings.OPTIMIZE_METRIC}): {optimal_value:.4f}")
     if verbose:
         logger.info(f"  Optimal Trial Parameters: {optimal_params}")
 

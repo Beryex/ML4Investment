@@ -34,25 +34,24 @@ class Settings:
     }
     STOCK_SECTOR_ID_MAP_PTH: str = "config/stock_sector_id_mapping.json"
     STOCK_SECTOR_ID_MAP: Dict[str, int] = json.load(open(STOCK_SECTOR_ID_MAP_PTH, "r"))
-    APPLY_CLIP: str | None = os.getenv("APPLY_CLIP", None)
-    APPLY_SCALE: str | None = os.getenv("APPLY_SCALE", None)
+    APPLY_CLIP: str = os.getenv("APPLY_CLIP", "skip")
+    APPLY_SCALE: str = os.getenv("APPLY_SCALE", "skip")
     CLIP_LOWER_QUANTILE_RATIO: float = 0.005
     CLIP_UPPER_QUANTILE_RATIO: float = 0.995
 
     # Model Training
-    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2013-11-30")
+    TRAINING_DATA_START_DATE: str = os.getenv("TRAIN_START_DATE", "2023-11-30")
     TRAINING_DATA_END_DATE: str = "2024-11-30"
     VALIDATION_DATA_START_DATE: str = "2024-12-01"
     VALIDATION_DATA_END_DATE: str = "2025-05-31"
     N_SPLIT: int = 5
     NUM_ROUNDS: int = 1000
     WARMUP_ROUNDS: int = 100
-    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
-    HYPERPARAMETER_SEARCH_LIMIT: int = 100
-    FEATURE_SEARCH_LIMIT: int = 100
+    TRAIN_OBJECTIVE: str = os.getenv("TRAIN_OBJECTIVE", "regression_l1")
+    OPTIMIZE_METRIC: str = os.getenv("OPTIMIZE_METRIC", "mae")
     FIXED_TRAINING_CONFIG: dict = {
-        "objective": "regression_l1",
-        "metric": "mae",
+        "objective": TRAIN_OBJECTIVE,
+        "metric": OPTIMIZE_METRIC,
         "verbosity": -1,
         "boosting_type": "dart",
         "num_rounds": NUM_ROUNDS,
@@ -62,6 +61,11 @@ class Settings:
         "force_row_wise": True,
         "deterministic": True,
     }
+
+    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
+    HYPERPARAMETER_SEARCH_LIMIT: int = 100
+    FEATURE_SEARCH_LIMIT: int = 100
+    PREDICT_STOCK_OPTIMIZE_METRIC: str = "overall_gain"
 
     # Prediction
     PREDICT_STOCK_NUMBER: int = 6

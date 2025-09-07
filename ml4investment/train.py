@@ -4,7 +4,6 @@ import logging
 import os
 import pickle
 from multiprocessing import cpu_count
-from pathlib import Path
 
 import pandas as pd
 import wandb
@@ -44,7 +43,7 @@ def train(
         f"Load input fetched data, starting from {train_data_start_date} "
         f"to {validation_data_end_date}"
     )
-    train_data_df = fetched_data_df[fetched_data_df['stock_code'].isin(train_stock_list)]
+    train_data_df = fetched_data_df[fetched_data_df["stock_code"].isin(train_stock_list)]
     train_data_df = train_data_df.loc[train_data_start_date:validation_data_end_date]
 
     """ 2. Calculate and process features for all data used """
@@ -144,8 +143,7 @@ def train(
                 f"Falling back to use all data."
             )
             optimal_data_sampling_proportion = {
-                stock: 1.0 for stock in train_stock_list 
-                if stock not in settings.SELECTIVE_ETF
+                stock: 1.0 for stock in train_stock_list if stock not in settings.SELECTIVE_ETF
             }
 
     X_train, y_train = sample_training_data(
@@ -195,7 +193,7 @@ def train(
     logger.info(f"Newest date in validation data: {X_validate.index.max()}")
     logger.info(f"Total processed samples in validation data: {X_validate.shape[0]}")
     logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
-    
+
     final_model = model_training(
         X_train,
         y_train,
@@ -226,7 +224,8 @@ def train(
     if args.optimize_predict_stocks:
         logger.info("Begin predict stocks optimization")
         logger.info(
-            f"Using average actual gain as the predict stocks optimization metric "
+            f"Using {settings.PREDICT_STOCK_OPTIMIZE_METRIC} "
+            f"as the predict stocks optimization metric "
             f"with target number {settings.PREDICT_STOCK_NUMBER}"
         )
 
@@ -251,26 +250,23 @@ def train(
     final_model.save_model(args.save_model_pth)
     logger.info(f"Model saved to {args.save_model_pth}")
 
-    if args.optimize_data_sampling_proportion:
-        os.makedirs(os.path.dirname(args.save_data_sampling_proportion_pth), exist_ok=True)
-        with open(args.save_data_sampling_proportion_pth, "w") as f:
-            json.dump(optimal_data_sampling_proportion, f, indent=4)
-        logger.info(
-            f"Optimized data sampling proportion saved to {args.save_data_sampling_proportion_pth}"
-        )
+    os.makedirs(os.path.dirname(args.save_data_sampling_proportion_pth), exist_ok=True)
+    with open(args.save_data_sampling_proportion_pth, "w") as f:
+        json.dump(optimal_data_sampling_proportion, f, indent=4)
+    logger.info(
+        f"Optimized data sampling proportion saved to {args.save_data_sampling_proportion_pth}"
+    )
 
-    if args.optimize_features:
-        os.makedirs(os.path.dirname(args.save_features_pth), exist_ok=True)
-        optimal_features = {"features": optimal_features}
-        with open(args.save_features_pth, "w") as f:
-            json.dump(optimal_features, f, indent=4)
-        logger.info(f"Optimized features saved to {args.save_features_pth}")
+    os.makedirs(os.path.dirname(args.save_features_pth), exist_ok=True)
+    optimal_features = {"features": optimal_features}
+    with open(args.save_features_pth, "w") as f:
+        json.dump(optimal_features, f, indent=4)
+    logger.info(f"Optimized features saved to {args.save_features_pth}")
 
-    if args.optimize_model_hyperparameters:
-        os.makedirs(os.path.dirname(args.save_model_hyperparams_pth), exist_ok=True)
-        with open(args.save_model_hyperparams_pth, "w") as f:
-            json.dump(optimal_model_hyperparams, f, indent=4)
-        logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
+    os.makedirs(os.path.dirname(args.save_model_hyperparams_pth), exist_ok=True)
+    with open(args.save_model_hyperparams_pth, "w") as f:
+        json.dump(optimal_model_hyperparams, f, indent=4)
+    logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
 
     predict_stocks = {"predict_stocks": predict_stock_list}
     os.makedirs(os.path.dirname(args.save_predict_stocks_pth), exist_ok=True)
@@ -300,7 +296,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default="config/train_stocks.json")
     parser.add_argument("--target_stocks", type=str, default="config/target_stocks.json")
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
+    parser.add_argument(
+        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
+    )
     parser.add_argument(
         "--optimize_data_sampling_proportion",
         "-odsp",

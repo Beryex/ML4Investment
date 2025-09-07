@@ -39,7 +39,7 @@ def predict(
 
     train_data_start_date = settings.TRAINING_DATA_START_DATE
     logger.info(f"Load input fetched data, starting from {train_data_start_date}")
-    train_data_df = fetched_data_df[fetched_data_df['stock_code'].isin(train_stock_list)]
+    train_data_df = fetched_data_df[fetched_data_df["stock_code"].isin(train_stock_list)]
     predict_data_df = train_data_df.loc[train_data_start_date:]
 
     daily_features_data = calculate_features(predict_data_df)
@@ -82,7 +82,9 @@ def predict(
     stock_last_prices = {
         stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items()
     }
-    sorted_results["last_price"] = sorted_results["stock_code"].map(stock_last_prices).astype(float)
+    sorted_results["last_price"] = (
+        sorted_results["stock_code"].map(stock_last_prices).astype(float)
+    )
 
     recommended_df = (
         sorted_results[sorted_results["prediction"] > 0]
@@ -151,7 +153,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
     parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
+    parser.add_argument(
+        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
+    )
 
     parser.add_argument(
         "--process_feature_config_pth",

@@ -32,7 +32,7 @@ def backtest(
 
     train_data_start_date = settings.TRAINING_DATA_START_DATE
     logger.info(f"Load input fetched data, starting from {train_data_start_date}")
-    train_data_df = fetched_data_df[fetched_data_df['stock_code'].isin(train_stock_list)]
+    train_data_df = fetched_data_df[fetched_data_df["stock_code"].isin(train_stock_list)]
     backtest_data_df = train_data_df.loc[train_data_start_date:]
 
     daily_features_df = calculate_features(backtest_data_df)
@@ -91,7 +91,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
     parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
-    parser.add_argument("--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet")
+    parser.add_argument(
+        "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
+    )
 
     parser.add_argument(
         "--process_feature_config_pth",

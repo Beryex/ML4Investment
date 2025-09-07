@@ -38,9 +38,7 @@ for start_year in $START_YEARS; do
     python train.py -of -v
 
     echo "Step 3: Optimizing Model Hyperparameters..."
-    export WANDB_MODE=online
-    export WANDB_RUN_NAME="start-year-${start_year}-model-optimized-predict-stocks-unoptimized-validation"
-    export WANDB_JOB_TYPE="validation"
+    export WANDB_MODE=disabled
     python train.py -omhp -v
 
     echo "Step 4: Running backtest for optimized model with unoptimized prediction stocks..."

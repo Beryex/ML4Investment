@@ -374,8 +374,8 @@ def load_local_data(
                 continue
 
             cur_processed_df["stock_code"] = stock
-            cur_processed_df.index.name = 'datetime'
-            
+            cur_processed_df.index.name = "datetime"
+
             fetched_data_list.append(cur_processed_df)
 
     fetched_data_df = pd.concat(fetched_data_list)
@@ -383,15 +383,12 @@ def load_local_data(
     return fetched_data_df
 
 
-def merge_fetched_data(
-        existing_data: pd.DataFrame, 
-        new_data: pd.DataFrame
-    ) -> pd.DataFrame:
+def merge_fetched_data(existing_data: pd.DataFrame, new_data: pd.DataFrame) -> pd.DataFrame:
     """Merge newly fetched data with previously saved data."""
     if new_data.empty:
         logger.info("New data is empty, no merge needed.")
         return existing_data
-    
+
     if existing_data.empty:
         logger.info("Existing data is empty, using new data directly.")
         return new_data
@@ -401,14 +398,14 @@ def merge_fetched_data(
         f"existing data for {existing_data['stock_code'].nunique()} stocks."
     )
     original_len = len(existing_data)
-    
+
     combined_df = pd.concat([existing_data, new_data])
 
     index_name = combined_df.index.name
 
     combined_df = combined_df.reset_index()
 
-    merged_df = combined_df.drop_duplicates(subset=['stock_code', index_name], keep='last')
+    merged_df = combined_df.drop_duplicates(subset=["stock_code", index_name], keep="last")
 
     merged_df = merged_df.set_index(index_name).sort_index()
 

@@ -109,6 +109,9 @@ def train(
                 {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
             )
 
+    logger.info(f"Training model with objective: {optimal_model_hyperparams['objective']}")
+    logger.info(f"Training model with optimize metric: {optimal_model_hyperparams['metric']}")
+
     """ 4. Optimize data sampling proportion if required """
     if args.optimize_data_sampling_proportion:
         logger.info("Optimize data sampling proportion from the scratch")

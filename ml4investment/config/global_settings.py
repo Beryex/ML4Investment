@@ -5,14 +5,14 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
-    MAX_NUM_PROCESSES: int = 10
+    MAX_NUM_PROCESSES: int = 30
     SEED: int = 42
 
     # Data Fetching
     AVAILABLE_STOCK_SOURCE: str = "https://companiesmarketcap.com/usa/largest-companies-in-the-usa-by-market-cap/?download=csv"
     MIN_MARKET_CAP: float = 1e9
     SELECTIVE_ETF: list[str] = ["QQQ", "SPY", "DIA", "VTV", "VUG", "GLD", "EFA", "KWEB"]
-    FETCH_PERIOD_DAYS: int = 10
+    FETCH_PERIOD_DAYS: int = 30
     DATA_INTERVAL_MINS: int = 30
     DATA_PER_DAY: int = 13
 

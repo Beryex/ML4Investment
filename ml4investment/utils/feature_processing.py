@@ -19,47 +19,47 @@ def _apply_clipping_and_scaling(
 ) -> tuple[pd.DataFrame, int]:
     """Apply clipping and scaling based on the provided configuration"""
     X_processed = X.copy()
+    X_processed[numerical_cols] = X_processed[numerical_cols].astype("float64")
     apply_clip = config.get("apply_clip")
     apply_scale = config.get("apply_scale")
 
     data_before_clip = X_processed[numerical_cols]
-    if apply_clip == "global":
+    if apply_clip == "global-level":
         bounds = config.get("bounds", {}).get("global")
         if bounds:
             X_processed[numerical_cols] = X_processed[numerical_cols].clip(
                 bounds["lower"], bounds["upper"], axis=1
             )
-    elif apply_clip == "stock":
-
-        def clip_stock(group):
-            stock_code = group["stock_code"].iloc[0]
+    elif apply_clip == "stock-level":
+        for stock_code, group in X_processed.groupby("stock_code"):
             stock_bounds = config.get("bounds", {}).get(stock_code)
             if stock_bounds:
-                group[numerical_cols] = group[numerical_cols].clip(
+                group_indices = group.index
+                clipped_values = group[numerical_cols].clip(
                     stock_bounds["lower"], stock_bounds["upper"], axis=1
                 )
-            return group
-
-        X_processed = X_processed.groupby("stock_code").apply(clip_stock)
+                X_processed.loc[group_indices, numerical_cols] = clipped_values
 
     data_after_clip = X_processed[numerical_cols]
     clipped_mask = (data_before_clip != data_after_clip).any(axis=1)
     clipped_rows_count = clipped_mask.sum()
 
-    if apply_scale == "global":
+    if apply_scale == "global-level":
         scaler = config.get("scaler")
         if scaler:
             X_processed[numerical_cols] = scaler.transform(X_processed[numerical_cols])
-    elif apply_scale == "stock":
-
-        def scale_stock(group):
-            stock_code = group["stock_code"].iloc[0]
+    elif apply_scale == "stock-level":
+        for stock_code, group in X_processed.groupby("stock_code"):
             scaler = config.get("scaler", {}).get(stock_code)
             if scaler:
-                group[numerical_cols] = scaler.transform(group[numerical_cols])
-            return group
+                group_indices = group.index
+                scaled_values = scaler.transform(group[numerical_cols])
 
-        X_processed = X_processed.groupby("stock_code").apply(scale_stock)
+                scaled_df = pd.DataFrame(
+                    scaled_values, index=group_indices, columns=numerical_cols
+                )
+
+                X_processed.loc[group_indices, numerical_cols] = scaled_df
 
     assert isinstance(X_processed, pd.DataFrame)
 
@@ -117,17 +117,17 @@ def process_features_for_train_and_validate(
 
     """ Post-processing features """
     boolean_cols = X_train.select_dtypes(include="bool").columns.tolist()
-    categorical_cols = settings.CATEGORICAL_FEATURES
+    categorical_cols = settings.CATEGORICAL_FEATURES + ["stock_code"]
     numerical_cols = [col for col in X_train.columns if col not in boolean_cols + categorical_cols]
 
     logger.info(f"Clipping method: {apply_clip}")
     logger.info(f"Scaling method: {apply_scale}")
 
-    if apply_clip == "global":
+    if apply_clip == "global-level":
         lower_bound = X_train[numerical_cols].quantile(settings.CLIP_LOWER_QUANTILE_RATIO)
         upper_bound = X_train[numerical_cols].quantile(settings.CLIP_UPPER_QUANTILE_RATIO)
         process_feature_config["bounds"] = {"global": {"lower": lower_bound, "upper": upper_bound}}
-    elif apply_clip == "stock":
+    elif apply_clip == "stock-level":
         bounds = X_train.groupby("stock_code")[numerical_cols].quantile(
             [settings.CLIP_LOWER_QUANTILE_RATIO, settings.CLIP_UPPER_QUANTILE_RATIO]  # type: ignore
         )
@@ -139,10 +139,10 @@ def process_features_for_train_and_validate(
             for stock, _ in X_train.groupby("stock_code")
         }
 
-    if apply_scale == "global":
+    if apply_scale == "global-level":
         scaler = RobustScaler().fit(X_train[numerical_cols])
         process_feature_config["scaler"] = scaler
-    elif apply_scale == "stock":
+    elif apply_scale == "stock-level":
         scalers = {
             stock_code: RobustScaler().fit(group[numerical_cols])
             for stock_code, group in X_train.groupby("stock_code")
@@ -231,7 +231,7 @@ def process_features_for_backtest(
 
     """ Post-processing features """
     boolean_cols = X_backtest.select_dtypes(include="bool").columns.tolist()
-    categorical_cols = settings.CATEGORICAL_FEATURES
+    categorical_cols = settings.CATEGORICAL_FEATURES + ["stock_code"]
     numerical_cols = [
         col for col in X_backtest.columns if col not in boolean_cols + categorical_cols
     ]
@@ -282,11 +282,11 @@ def process_features_for_predict(
     feature_cols = [col for col in predict_df.columns if col != "Target"]
     X_predict = predict_df[feature_cols]
 
-    X_predict.dropna(inplace=True)
+    X_predict = X_predict.dropna()
 
     """ Post-processing features """
     boolean_cols = X_predict.select_dtypes(include="bool").columns.tolist()
-    categorical_cols = settings.CATEGORICAL_FEATURES
+    categorical_cols = settings.CATEGORICAL_FEATURES + ["stock_code"]
     numerical_cols = [
         col for col in X_predict.columns if col not in boolean_cols + categorical_cols
     ]

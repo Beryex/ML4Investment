@@ -369,12 +369,15 @@ def perform_schwab_trade(
     logger.info("All previous active orders canceled")
 
     logger.info("Placing new orders...")
-    account_positions = {
-        position["instrument"]["symbol"]: position["longQuantity"]
-        for position in client.account_details(account_hash, fields="positions").json()[
-            "securitiesAccount"
-        ]["positions"]
-    }
+    try:
+        account_positions = {
+            position["instrument"]["symbol"]: position["longQuantity"]
+            for position in client.account_details(account_hash, fields="positions").json()[
+                "securitiesAccount"
+            ]["positions"]
+        }
+    except KeyError:
+        account_positions = {}
 
     all_stocks_involved = list(account_positions.keys() | stock_to_buy_in.keys())
     for stock in all_stocks_involved:

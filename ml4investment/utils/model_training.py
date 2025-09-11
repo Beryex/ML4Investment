@@ -26,29 +26,31 @@ def model_training(
     y_validate: pd.Series,
     categorical_features: list,
     model_hyperparams: dict,
-) -> lgb.Booster:
-    """Train the final model with optimized parameters"""
+    show_training_log: bool = False
+) -> tuple[lgb.Booster, float]:
+    """Train the model with optimized parameters and get optimal score"""
     logger.info("Begin model training with optimized parameters")
     metric_logger_cb = OptimalIterationLogger()
-    final_model = lgb.train(
+    model = lgb.train(
         model_hyperparams,
         train_set=lgb.Dataset(X_train, label=y_train, categorical_feature=categorical_features),
         valid_sets=[
             lgb.Dataset(X_validate, label=y_validate, categorical_feature=categorical_features)
         ],
         num_boost_round=int(model_hyperparams["num_rounds"]),
-        callbacks=[lgb.log_evaluation(period=100), metric_logger_cb],
+        callbacks=[lgb.log_evaluation(period=100 if show_training_log else -1), metric_logger_cb],
     )
-    final_model.best_iteration = metric_logger_cb.optimal_iteration
+    model.best_iteration = metric_logger_cb.optimal_iteration
+    optimal_score = metric_logger_cb.optimal_score
     logger.info(
-        f"Final model training completed. Optimal iteration on validation set: "
-        f"{final_model.best_iteration} with {settings.OPTIMIZE_METRIC}: "
-        f"{metric_logger_cb.optimal_score}"
+        f"Model training completed. Optimal iteration on validation set: "
+        f"{model.best_iteration} with {settings.OPTIMIZE_METRIC}: "
+        f"{optimal_score}"
     )
 
     logger.info("Model training completed")
 
-    return final_model
+    return model, optimal_score
 
 
 def validate_model(
@@ -100,7 +102,7 @@ def optimize_data_sampling_proportion(
     y_train: pd.Series,
     X_validate: pd.DataFrame,
     y_validate: pd.Series,
-    target_stock_list: list[str],
+    train_stock_list: list[str],
     given_data_sampling_proportion_pth: str,
     categorical_features: list,
     model_hyperparams: dict,
@@ -108,11 +110,53 @@ def optimize_data_sampling_proportion(
     verbose: bool = False,
 ) -> dict:
     """Optimize data sampling proportion for training"""
+    logger.info("Optimizing data sampling proportion...")
+    study = optuna.create_study(
+        study_name="Data Sampling Proportion Optimization",
+        directions=["minimize"],
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
+    )
+
+    if given_data_sampling_proportion_pth and Path(given_data_sampling_proportion_pth).exists():
+        logger.info("Enqueuing trial with given sampling proportion as baseline.")
+        baseline_dsp = json.load(open(given_data_sampling_proportion_pth, "r"))
+        study.enqueue_trial(baseline_dsp)
+    else:
+        baseline_dsp = {}
+        logger.info("Enqueuing trial with all data sampled as baseline.")
+        uniform_params = {stock: 1.0 for stock in train_stock_list}
+        study.enqueue_trial(uniform_params)
+    
+    dsp_search_range = {}
+    train_stock_list = train_stock_list.copy()
+    train_stock_list = [s for s in train_stock_list if s not in settings.SELECTIVE_ETF]
+    dsp_search_amplitude = settings.DATA_SAMPLING_PROPORTION_SEARCH_AMPLITUDE
+    logger.info(
+        f"Updating each stock search range based on given data sampling proportion "
+        f"with amplitude: {dsp_search_amplitude}"
+    )
+    for stock in train_stock_list:
+        dsp_search_range[stock] = {
+            "min": max(
+                0.0,
+                baseline_dsp.get(stock, 0.5) - dsp_search_amplitude
+            ),
+            "max": min(
+                1.0,
+                baseline_dsp.get(stock, 0.5) + dsp_search_amplitude
+            ),
+        }
+        logger.info(
+            f"  - {stock}: "
+            f"[{dsp_search_range[stock]['min']:.2f}, {dsp_search_range[stock]['max']:.2f}]"
+        )
 
     def objective(trial: optuna.Trial) -> float:
         stock_proportion_dict = {}
-        for stock in target_stock_list:
-            stock_proportion_dict[stock] = trial.suggest_float(f"{stock}", 0.0, 1.0)
+        for stock in train_stock_list:
+            stock_proportion_dict[stock] = trial.suggest_float(
+                f"{stock}", dsp_search_range[stock]['min'], dsp_search_range[stock]['max']
+            )
 
         cur_X_train, cur_y_train = sample_training_data(
             X_train,
@@ -121,47 +165,16 @@ def optimize_data_sampling_proportion(
             seed=seed,
         )
 
-        cur_metric_logger_cb = OptimalIterationLogger()
-        cur_model = lgb.train(
+        _, cur_valid_score = model_training(
+            cur_X_train,
+            cur_y_train,
+            X_validate,
+            y_validate,
+            categorical_features,
             model_hyperparams,
-            train_set=lgb.Dataset(
-                cur_X_train, label=cur_y_train, categorical_feature=categorical_features
-            ),
-            valid_sets=[
-                lgb.Dataset(
-                    X_validate,
-                    label=y_validate,
-                    categorical_feature=categorical_features,
-                )
-            ],
-            num_boost_round=int(model_hyperparams["num_rounds"]),
-            callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
-        )
-        cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_valid_score = cur_metric_logger_cb.optimal_score
-        logger.info(
-            f"Current trial model training completed. "
-            f"Optimal iteration on validation set: {cur_model.best_iteration} "
-            f"with {settings.OPTIMIZE_METRIC}: {cur_valid_score}"
         )
 
         return cur_valid_score
-
-    logger.info("Optimizing data sampling proportion...")
-    study = optuna.create_study(
-        study_name="Data Sampling Proportion Optimization",
-        directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
-    )
-
-    logger.info("Enqueuing trial with all data sampled as a baseline.")
-    uniform_params = {stock: 1.0 for stock in target_stock_list}
-    study.enqueue_trial(uniform_params)
-
-    if given_data_sampling_proportion_pth and Path(given_data_sampling_proportion_pth).exists():
-        logger.info("Enqueuing trial with given sampling proportion as another baseline.")
-        given_data_sampling_proportion = json.load(open(given_data_sampling_proportion_pth, "r"))
-        study.enqueue_trial(given_data_sampling_proportion)
 
     study.optimize(
         objective,
@@ -203,12 +216,60 @@ def optimize_features(
     verbose: bool = False,
 ) -> list[str]:
     """Optimize model features using Optuna to select a subset."""
+    logger.info("Optimizing features...")
+    study = optuna.create_study(
+        study_name="Model Feature Selection Optimization",
+        directions=["minimize"],
+        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
+    )
+
     numerical_features = [f for f in all_features if f not in categorical_features]
+    if given_features_pth and Path(given_features_pth).exists():
+        logger.info("Enqueuing trial with given features as baseline.")
+        given_model_features = json.load(open(given_features_pth, "r"))["features"]
+        baseline_features = {}
+        for feature in numerical_features:
+            if feature in given_model_features:
+                baseline_features[feature] = 0.75
+            else:
+                baseline_features[feature] = 0.25
+        study.enqueue_trial(baseline_features)
+    else:
+        logger.info("Enqueuing trial with all features included as baseline.")
+        baseline_features = {f"{f}": 0.5 for f in numerical_features}
+        study.enqueue_trial(baseline_features)
+
+    feature_search_range = {}
+    feature_search_amplitude = settings.FEATURE_SEARCH_AMPLITUDE
+    logger.info(
+        f"Updating each feature search range based on given features "
+        f"with amplitude: {feature_search_amplitude}"
+    )
+    for feature in numerical_features:
+        feature_search_range[feature] = {
+            "min": max(
+                0.0, 
+                baseline_features.get(feature, 0.5) - feature_search_amplitude
+            ),
+            "max": min(
+                1.0, 
+                baseline_features.get(feature, 0.5) + feature_search_amplitude
+            ),
+        }
+        logger.info(
+            f"  - {feature}: "
+            f"[{feature_search_range[feature]['min']:.2f}, "
+            f"{feature_search_range[feature]['max']:.2f}]"
+        )
 
     def objective(trial: optuna.Trial) -> float:
         candidate_features = categorical_features.copy()
         for feature in numerical_features:
-            if trial.suggest_float(feature, 0.0, 1.0) >= 0.5:
+            if (trial.suggest_float(
+                    feature, 
+                    feature_search_range[feature]['min'], 
+                    feature_search_range[feature]['max']
+                ) >= 0.5):
                 candidate_features.append(feature)
 
         if not candidate_features:
@@ -218,55 +279,17 @@ def optimize_features(
         cur_X_train = X_train[candidate_features]
         cur_X_validate = X_validate[candidate_features]
 
-        cur_metric_logger_cb = OptimalIterationLogger()
-        cur_model = lgb.train(
+        _, cur_valid_score = model_training(
+            cur_X_train,
+            y_train,
+            cur_X_validate,
+            y_validate,
+            categorical_features,
             model_hyperparams,
-            train_set=lgb.Dataset(
-                cur_X_train, label=y_train, categorical_feature=categorical_features
-            ),
-            valid_sets=[
-                lgb.Dataset(
-                    cur_X_validate,
-                    label=y_validate,
-                    categorical_feature=categorical_features,
-                )
-            ],
-            num_boost_round=model_hyperparams["num_rounds"],
-            callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
         )
-        cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_valid_score = cur_metric_logger_cb.optimal_score
-
-        if verbose:
-            logger.info(
-                f"Trial {trial.number} with {len(candidate_features)} features "
-                f"resulted in {settings.OPTIMIZE_METRIC}: {cur_valid_score:.6f}"
-            )
 
         return cur_valid_score
 
-    study = optuna.create_study(
-        study_name="Model Feature Selection Optimization",
-        directions=["minimize"],
-        sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
-    )
-
-    logger.info("Enqueuing a baseline trial with all features included.")
-    baseline_features = {f"{f}": 0.5 for f in numerical_features}
-    study.enqueue_trial(baseline_features)
-
-    if given_features_pth and Path(given_features_pth).exists():
-        logger.info("Enqueuing trial with given features as another baseline.")
-        given_model_features = json.load(open(given_features_pth, "r"))["features"]
-        baseline_features = {}
-        for feature in numerical_features:
-            if feature in given_model_features:
-                baseline_features[feature] = 1.0
-            else:
-                baseline_features[feature] = 0.0
-        study.enqueue_trial(baseline_features)
-
-    # Run the optimization
     study.optimize(
         objective,
         n_trials=settings.FEATURE_SEARCH_LIMIT,
@@ -308,76 +331,135 @@ def optimize_model_hyperparameters(
     verbose: bool = False,
 ) -> dict[str, Any]:
     """Optimize model hyperparameters using Optuna"""
-    cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
-    cur_train_fixed_config.update({"seed": seed})
-    cur_train_fixed_config.update(
-        {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
-    )
-
-    def objective(trial: optuna.Trial) -> float:
-        params = {
-            "drop_rate": trial.suggest_float("drop_rate", 0.05, 0.2),
-            "skip_drop": trial.suggest_float("skip_drop", 0.3, 0.7),
-            "num_leaves": trial.suggest_int("num_leaves", 15, 255, log=True),
-            "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.5, log=True),
-            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 20, 100),
-            "lambda_l1": trial.suggest_float("lambda_l1", 1e-8, 1.0, log=True),
-            "lambda_l2": trial.suggest_float("lambda_l2", 1e-8, 1.0, log=True),
-        }
-        params.update(cur_train_fixed_config)
-
-        cur_metric_logger_cb = OptimalIterationLogger()
-        cur_model = lgb.train(
-            params,
-            train_set=lgb.Dataset(
-                X_train, label=y_train, categorical_feature=categorical_features
-            ),
-            valid_sets=[
-                lgb.Dataset(
-                    X_validate,
-                    label=y_validate,
-                    categorical_feature=categorical_features,
-                )
-            ],
-            num_boost_round=params["num_rounds"],
-            callbacks=[lgb.log_evaluation(False), cur_metric_logger_cb],
-        )
-        cur_model.best_iteration = cur_metric_logger_cb.optimal_iteration
-        cur_value = cur_metric_logger_cb.optimal_score
-        logger.info(
-            f"Current trial model training completed. "
-            f"Optimal iteration on validation set: {cur_model.best_iteration} "
-            f"with {settings.OPTIMIZE_METRIC}: {cur_value}"
-        )
-
-        return cur_value
-
-    logger.info("Begin hyperparameter optimization")
+    logger.info("Optimize model hyperparameters...")
     study = optuna.create_study(
         study_name="Model Hyperparameter Optimization",
         directions=["minimize"],
         sampler=optuna.samplers.TPESampler(seed=seed, multivariate=True),
     )
 
-    logger.info("Enqueuing trial with default hyperparameter as a baseline.")
-    default_params = {
-        "drop_rate": 0.1,
-        "skip_drop": 0.5,
-        "num_leaves": 31,
-        "learning_rate": 0.1,
-        "min_data_in_leaf": 20,
-        "lambda_l1": 1e-8,
-        "lambda_l2": 1e-8,
-    }
-    default_params.update(cur_train_fixed_config)
-    study.enqueue_trial(default_params)
-
+    cur_train_fixed_config = settings.FIXED_TRAINING_CONFIG.copy()
+    cur_train_fixed_config.update({"seed": seed})
+    cur_train_fixed_config.update(
+        {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
+    )
     if given_model_hyperparams_pth and Path(given_model_hyperparams_pth).exists():
-        logger.info("Enqueuing trial with given hyperparameter as another baseline.")
+        logger.info("Enqueuing trial with given hyperparameter as baseline.")
         given_model_hyperparams = json.load(open(given_model_hyperparams_pth, "r"))
-        study.enqueue_trial(given_model_hyperparams)
+        mhp_baseline = {
+            "drop_rate": given_model_hyperparams["drop_rate"],
+            "skip_drop": given_model_hyperparams["skip_drop"],
+            "num_leaves": given_model_hyperparams["num_leaves"],
+            "learning_rate": given_model_hyperparams["learning_rate"],
+            "min_data_in_leaf": given_model_hyperparams["min_data_in_leaf"],
+            "lambda_l1": given_model_hyperparams["lambda_l1"],
+            "lambda_l2": given_model_hyperparams["lambda_l2"],
+        }
+        baseline = mhp_baseline.copy()
+        baseline.update(cur_train_fixed_config)
+        study.enqueue_trial(baseline)
+    else:
+        logger.info("Enqueuing trial with default hyperparameter as a baseline.")
+        mhp_baseline = {
+            "drop_rate": 0.1,
+            "skip_drop": 0.5,
+            "num_leaves": 31,
+            "learning_rate": 0.1,
+            "min_data_in_leaf": 20,
+            "lambda_l1": 1e-8,
+            "lambda_l2": 1e-8,
+        }
+        baseline = mhp_baseline.copy()
+        baseline.update(cur_train_fixed_config)
+        study.enqueue_trial(baseline)
+    
+    mhp_search_range = {}
+    mhp_search_amplitude = settings.HYPERPARAMETER_SEARCH_AMPLITUDE
+    logger.info(
+        f"Updating each hyperparameter search range based on given features "
+        f"with amplitude: {mhp_search_amplitude}"
+    )
+    for mhp in mhp_baseline.keys():
+        center_value = mhp_baseline[mhp]
+        lower_bound = center_value * (1 - mhp_search_amplitude)
+        upper_bound = center_value * (1 + mhp_search_amplitude)
+        
+        if mhp in ["num_leaves", "min_data_in_leaf"]:
+            lower_bound = int(max(1, lower_bound))
+            upper_bound = math.ceil(max(lower_bound + 1, upper_bound))
+        else:
+            lower_bound = max(0.0, lower_bound)
+            if mhp in ["drop_rate", "skip_drop"]:
+                upper_bound = min(1.0, upper_bound)
+        
+        mhp_search_range[mhp] = {"min": lower_bound, "max": upper_bound}
 
-    study.optimize(objective, n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, timeout=604800)
+        logger.info(
+            f"  - {mhp}: "
+            f"[{mhp_search_range[mhp]['min']:.2f}, "
+            f"{mhp_search_range[mhp]['max']:.2f}]"
+        )
+
+    def objective(trial: optuna.Trial) -> float:
+        params = {
+            "drop_rate": trial.suggest_float(
+                "drop_rate", 
+                mhp_search_range["drop_rate"]["min"], 
+                mhp_search_range["drop_rate"]["max"]
+            ),
+            "skip_drop": trial.suggest_float(
+                "skip_drop", 
+                mhp_search_range["skip_drop"]["min"], 
+                mhp_search_range["skip_drop"]["max"]
+            ),
+            "num_leaves": trial.suggest_int(
+                "num_leaves", 
+                mhp_search_range["num_leaves"]["min"], 
+                mhp_search_range["num_leaves"]["max"], 
+                log=True
+            ),
+            "learning_rate": trial.suggest_float(
+                "learning_rate", 
+                mhp_search_range["learning_rate"]["min"], 
+                mhp_search_range["learning_rate"]["max"], 
+                log=True
+            ),
+            "min_data_in_leaf": trial.suggest_int(
+                "min_data_in_leaf", 
+                mhp_search_range["min_data_in_leaf"]["min"], 
+                mhp_search_range["min_data_in_leaf"]["max"]
+            ),
+            "lambda_l1": trial.suggest_float(
+                "lambda_l1", 
+                mhp_search_range["lambda_l1"]["min"], 
+                mhp_search_range["lambda_l1"]["max"], 
+                log=True
+            ),
+            "lambda_l2": trial.suggest_float(
+                "lambda_l2", 
+                mhp_search_range["lambda_l2"]["min"], 
+                mhp_search_range["lambda_l2"]["max"], 
+                log=True
+            ),
+        }
+        params.update(cur_train_fixed_config)
+
+        _, cur_valid_score = model_training(
+            X_train,
+            y_train,
+            X_validate,
+            y_validate,
+            categorical_features,
+            params,
+        )
+
+        return cur_valid_score
+
+    study.optimize(
+        objective, 
+        n_trials=settings.HYPERPARAMETER_SEARCH_LIMIT, 
+        timeout=604800
+    )
 
     if verbose:
         param_importance = get_param_importances(study)

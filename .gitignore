@@ -179,7 +179,7 @@ cython_debug/
 # custom
 *.pkl
 *.model
-ml4investment/result/*
+ml4investment/results/*
 ml4investment/wandb/*
 ml4investment/tokens.json
 ml4investment/config/predict_stocks.json

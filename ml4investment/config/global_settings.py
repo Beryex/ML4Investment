@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
-    MAX_NUM_PROCESSES: int = 30
+    MAX_NUM_PROCESSES: int = 10
     SEED: int = 42
 
     # Data Fetching
@@ -62,9 +62,13 @@ class Settings:
         "deterministic": True,
     }
 
+    ITERATIVE_OPTIMIZATION_STEPS: int = 5
+    DATA_SAMPLING_PROPORTION_SEARCH_AMPLITUDE: float = 0.5
     DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
-    HYPERPARAMETER_SEARCH_LIMIT: int = 100
+    FEATURE_SEARCH_AMPLITUDE: float = 0.5
     FEATURE_SEARCH_LIMIT: int = 100
+    HYPERPARAMETER_SEARCH_AMPLITUDE: float = 0.5
+    HYPERPARAMETER_SEARCH_LIMIT: int = 100
     PREDICT_STOCK_OPTIMIZE_METRIC: str = "overall_gain"
 
     # Prediction

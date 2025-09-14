@@ -120,7 +120,7 @@ def train(
             y_train,
             X_validate,
             y_validate,
-            target_stock_list=target_stock_list,
+            train_stock_list=train_stock_list,
             categorical_features=settings.CATEGORICAL_FEATURES,
             model_hyperparams=optimal_model_hyperparams,
             given_data_sampling_proportion_pth=args.data_sampling_proportion_pth,
@@ -197,13 +197,14 @@ def train(
     logger.info(f"Total processed samples in validation data: {X_validate.shape[0]}")
     logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
 
-    final_model = model_training(
+    final_model, _ = model_training(
         X_train,
         y_train,
         X_validate,
         y_validate,
         categorical_features=settings.CATEGORICAL_FEATURES,
         model_hyperparams=optimal_model_hyperparams,
+        show_training_log=True,
     )
 
     (

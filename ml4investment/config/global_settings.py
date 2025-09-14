@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
-    MAX_NUM_PROCESSES: int = 30
+    LOG_DIR: str = os.getenv("LOG_DIR", "logs")
+    MAX_NUM_PROCESSES: int = 10
     SEED: int = 42
 
     # Data Fetching
@@ -45,10 +46,9 @@ class Settings:
     VALIDATION_DATA_START_DATE: str = "2024-12-01"
     VALIDATION_DATA_END_DATE: str = "2025-05-31"
     N_SPLIT: int = 5
-    NUM_ROUNDS: int = 1000
-    WARMUP_ROUNDS: int = 100
+    NUM_ROUNDS: int = int(os.getenv("NUM_ROUNDS", 1000))
     TRAIN_OBJECTIVE: str = os.getenv("TRAIN_OBJECTIVE", "regression_l1")
-    OPTIMIZE_METRIC: str = os.getenv("OPTIMIZE_METRIC", "mae")
+    OPTIMIZE_METRIC: str = os.getenv("OPTIMIZE_METRIC", "l1")
     FIXED_TRAINING_CONFIG: dict = {
         "objective": TRAIN_OBJECTIVE,
         "metric": OPTIMIZE_METRIC,
@@ -62,13 +62,26 @@ class Settings:
         "deterministic": True,
     }
 
-    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = 100
-    HYPERPARAMETER_SEARCH_LIMIT: int = 100
-    FEATURE_SEARCH_LIMIT: int = 100
+    ITERATIVE_OPTIMIZATION_STEPS: int = int(os.getenv("ITERATIVE_OPTIMIZATION_STEPS", 1))
+    PRUNING_WARMUP_STEPS: int = int(os.getenv("PRUNING_WARMUP_STEPS", 1001))
+    DATA_OPTIMIZATION_SAMPLING_MULTIVARIATE: bool = (
+        os.getenv("DATA_OPTIMIZATION_SAMPLING_MULTIVARIATE", "true").lower() == "true"
+    )
+    DATA_SAMPLING_PROPORTION_SEARCH_LIMIT: int = int(
+        os.getenv("DATA_SAMPLING_PROPORTION_SEARCH_LIMIT", 100)
+    )
+    FEATURE_OPTIMIZATION_SAMPLING_MULTIVARIATE: bool = (
+        os.getenv("FEATURE_OPTIMIZATION_SAMPLING_MULTIVARIATE", "true").lower() == "true"
+    )
+    FEATURE_SEARCH_LIMIT: int = int(os.getenv("FEATURE_SEARCH_LIMIT", 100))
+    MODEL_OPTIMIZATION_SAMPLING_MULTIVARIATE: bool = (
+        os.getenv("MODEL_OPTIMIZATION_SAMPLING_MULTIVARIATE", "true").lower() == "true"
+    )
+    HYPERPARAMETER_SEARCH_LIMIT: int = int(os.getenv("HYPERPARAMETER_SEARCH_LIMIT", 100))
     PREDICT_STOCK_OPTIMIZE_METRIC: str = "overall_gain"
+    PREDICT_STOCK_NUMBER: int = 6
 
     # Prediction
-    PREDICT_STOCK_NUMBER: int = 6
     NUMBER_OF_STOCKS_TO_BUY: int = 1
     OPENING_STATUS: set[str] = {"PENDING_ACTIVATION", "WORKING", "OPEN", "QUEUED"}
 

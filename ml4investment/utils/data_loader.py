@@ -424,6 +424,7 @@ def sample_training_data(
     seed: int,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Sample training data based on the given sampling proportion."""
+    logger.info("Sampling training data based on the given proportions...")
     sampled_X_train_list: list[pd.DataFrame] = []
     sampled_y_train_list: list[pd.Series] = []
 

@@ -204,7 +204,7 @@ def train(
         y_validate,
         categorical_features=settings.CATEGORICAL_FEATURES,
         model_hyperparams=optimal_model_hyperparams,
-        show_training_log=True
+        show_training_log=True,
     )
 
     (

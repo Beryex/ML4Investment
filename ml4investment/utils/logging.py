@@ -34,7 +34,7 @@ def configure_logging(env: str = "prod", file_name: str = "") -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_name = f"{stem}_{timestamp}{suffix}"
 
-    log_dir = BASE_DIR / "logs" / env
+    log_dir = BASE_DIR / settings.LOG_DIR / env
     log_dir.mkdir(parents=True, exist_ok=True)
 
     config = {

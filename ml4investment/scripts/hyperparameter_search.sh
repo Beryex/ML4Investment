@@ -12,14 +12,15 @@ fi
 
 echo "Starting generic hyperparameter search run at $(date)"
 
+export LOG_DIR="hyperparameter_search_logs"
+
 # ===================================================================================
 ## 1. DEFINE HYPERPARAMETERS (MODIFY THIS SECTION)
 #    - Key: The name of the environment variable (e.g., TRAIN_OBJECTIVE)
 #    - Value: A space-separated string containing all possible values to test.
 # ===================================================================================
 declare -A hparams=(
-    ["TRAIN_OBJECTIVE"]="regression_l2"
-    ["OPTIMIZE_METRIC"]="mse"
+    ["DATA_OPTIMIZATION_SAMPLING_MULTIVARIATE"]="False"
 )
 
 # ===================================================================================
@@ -53,53 +54,71 @@ run_experiment() {
     done
 
     echo "Reading the number of iterations from Python settings..."
-    ITERATIVE_OPTIMIZATION_STEPS=$(python -c "from config import settings; print(settings.ITERATIVE_OPTIMIZATION_STEPS)")
+    ITERATIVE_OPTIMIZATION_STEPS=$(python -c "from ml4investment.config.global_settings import settings; print(settings.ITERATIVE_OPTIMIZATION_STEPS)")
     echo "Retrieved number of iterations: ${ITERATIVE_OPTIMIZATION_STEPS}."
 
     # --- Set up and create directories ---
     local CONFIG_DIR="config"
     local DATA_DIR="data"
-    local LOG_DIR="logs"
     mkdir -p "$RESULT_DIR"
 
     # --- Set a unique WANDB_RUN_GROUP for this combination ---
-    export WANDB_RUN_GROUP="${combination_str}-$(date +%Y%m%d-%H%M%S)"
+    export WANDB_RUN_GROUP="${combination_str}"
 
     for i in $(seq 1 $ITERATIVE_OPTIMIZATION_STEPS); do
         echo "Running optimization iteration ${i}..."
 
-        echo "Step 1.${i}: Optimizing Data Sampling Proportion..."
-        export WANDB_MODE=disabled
+        echo "Step 1.${i}.1: Optimizing Data Sampling Proportion..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-sampling-validation"
+        export WANDB_JOB_TYPE="validation"
         python train.py -odsp -v
 
-        echo "Step 2.${i}: Optimizing Model Features..."
-        export WANDB_MODE=disabled
+        echo "Step 1.${i}.2: Running backtest for optimized data sampling proportion..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-sampling-backtest"
+        export WANDB_JOB_TYPE="backtest"
+        python backtest.py -v
+
+        echo "Step 2.${i}.1: Optimizing Model Features..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-features-validation"
+        export WANDB_JOB_TYPE="validation"
         python train.py -of -v
 
-        echo "Step 3.${i}: Optimizing Model Hyperparameters..."
-        export WANDB_MODE=disabled
+        echo "Step 2.${i}.2: Running backtest for optimized model features..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-features-backtest"
+        export WANDB_JOB_TYPE="backtest"
+        python backtest.py -v
+
+        echo "Step 3.${i}.1: Optimizing Model Hyperparameters..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-hyperparams-validation"
+        export WANDB_JOB_TYPE="validation"
         python train.py -omhp -v
+
+        echo "Step 3.${i}.2: Running backtest for optimized model hyperparameters..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-hyperparams-backtest"
+        export WANDB_JOB_TYPE="backtest"
+        python backtest.py -v
+
+        echo "Step 4.${i}.1: Optimizing Prediction Stocks..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-stocks-validation"
+        export WANDB_JOB_TYPE="validation"
+        python train.py -ops -v
+
+        echo "Step 4.${i}.2: Running backtest for optimized model with optimized prediction stocks..."
+        export WANDB_MODE=online
+        export WANDB_RUN_NAME="optimized-stocks-backtest"
+        export WANDB_JOB_TYPE="backtest"
+        python backtest.py -v
+
     done
 
-    echo "Step 4: Running backtest for optimized model with unoptimized prediction stocks..."
-    export WANDB_MODE=online
-    export WANDB_RUN_NAME="unoptimized-stocks-backtest"
-    export WANDB_JOB_TYPE="backtest"
-    python backtest.py -v
-
-    echo "Step 5: Optimizing Prediction Stocks..."
-    export WANDB_MODE=online
-    export WANDB_RUN_NAME="optimized-stocks-validation"
-    export WANDB_JOB_TYPE="validation"
-    python train.py -ops -v
-
-    echo "Step 6: Running backtest for optimized model with optimized prediction stocks..."
-    export WANDB_MODE=online
-    export WANDB_RUN_NAME="optimized-stocks-backtest"
-    export WANDB_JOB_TYPE="backtest"
-    python backtest.py -v
-
-    echo "Step 7: Archiving configuration files..."
+    echo "Step 5: Archiving configuration files..."
     mv "${DATA_DIR}/prod_data_sampling_proportion.json" "${RESULT_DIR}"
     mv "${DATA_DIR}/prod_features.json" "${RESULT_DIR}"
     mv "${DATA_DIR}/prod_model_hyperparams.json" "${RESULT_DIR}"

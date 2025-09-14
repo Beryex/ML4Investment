@@ -7,6 +7,8 @@ current_date=$(date +%Y-%m-%d)
 
 echo "Starting daily usage run at $(date)"
 
+export LOG_DIR="daily_usage_logs"
+
 export WANDB_RUN_GROUP="daily-usage"
 echo "WANDB_RUN_GROUP set to: ${WANDB_RUN_GROUP}"
 

@@ -79,7 +79,7 @@ def get_detailed_static_result(
     predict_stock_list: list,
     name: str = "",
     verbose: bool = True,
-) -> tuple[float, float, float, float, float, float, float, float, list[str]]:
+) -> tuple[int, float, float, float, float, float, float, float, float, float, float, list[str]]:
     """Display detailed static result of the model predictions"""
     preds = model.predict(X, num_iteration=model.best_iteration)
     assert isinstance(preds, np.ndarray)
@@ -140,6 +140,7 @@ def get_detailed_static_result(
     """Compute daily-level metrics"""
     gain_actual = 1.0
     daily_results_table_data = []
+    daily_returns_list = []
     k = settings.NUMBER_OF_STOCKS_TO_BUY
 
     unique_days = results_df.index.unique()
@@ -165,6 +166,8 @@ def get_detailed_static_result(
             ).sum()
             daily_gain_actual = ((1 + top_predicted["y_actual"]) * top_predicted["weights"]).sum()
 
+        daily_returns_list.append(daily_gain_actual - 1)
+
         top_actual = daily_df_filtered.sort_values("y_actual", ascending=False).head(k)
 
         if top_actual.empty:
@@ -189,6 +192,19 @@ def get_detailed_static_result(
         )
 
     average_daily_gain = gain_actual ** (1 / day_number) if day_number > 0 else 1.0
+
+    daily_returns_np = np.array(daily_returns_list)
+    if np.std(daily_returns_np) > 0:
+        daily_sharpe_ratio = np.mean(daily_returns_np) / np.std(daily_returns_np)
+        annualized_sharpe_ratio = daily_sharpe_ratio * np.sqrt(settings.TRADING_DAYS_PER_YEAR)
+    else:
+        annualized_sharpe_ratio = 0.0
+
+    cumulative_returns = np.cumprod(1 + daily_returns_np)
+    peak = np.maximum.accumulate(cumulative_returns)
+    drawdown = (cumulative_returns - peak) / peak
+    max_drawdown = np.min(drawdown) if len(drawdown) > 0 else 0.0
+
     sorted_stocks = sorted(
         stock_metrics.keys(),
         key=lambda s: stock_metrics[s][settings.PREDICT_STOCK_OPTIMIZE_METRIC],
@@ -258,6 +274,7 @@ def get_detailed_static_result(
 
     overall_static_table = PrettyTable()
     overall_static_table.field_names = [
+        "Trading Days",
         "MAE",
         "MSE",
         "Sign Acc",
@@ -266,9 +283,12 @@ def get_detailed_static_result(
         "F1",
         "Avg Daily Gain",
         "Overall Gain",
+        "Annualized Sharpe Ratio",
+        "Max Drawdown",
     ]
     overall_static_table.add_row(
         [
+            f"{day_number}",
             f"{mae_overall:.7f}",
             f"{mse_overall:.7f}",
             f"{sign_acc_overall * 100:.2f}%",
@@ -277,6 +297,8 @@ def get_detailed_static_result(
             f"{f1_overall * 100:.2f}%",
             f"{average_daily_gain:+.4%}",
             f"{gain_actual:+.2%}",
+            f"{annualized_sharpe_ratio:.3f}",
+            f"{max_drawdown:.2%}",
         ],
         divider=True,
     )
@@ -284,6 +306,7 @@ def get_detailed_static_result(
     logger.info(f"\n{overall_static_table.get_string(title=title_str)}")
 
     return (
+        day_number,
         mae_overall,
         mse_overall,
         sign_acc_overall,
@@ -292,6 +315,8 @@ def get_detailed_static_result(
         f1_overall,
         average_daily_gain,
         gain_actual,
+        annualized_sharpe_ratio,
+        max_drawdown,
         sorted_stocks,
     )
 

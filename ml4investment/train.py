@@ -208,6 +208,7 @@ def train(
     )
 
     (
+        valid_day_number,
         valid_mae,
         valid_mse,
         valid_sign_acc,
@@ -216,6 +217,8 @@ def train(
         valid_f1,
         vaild_average_daily_gain,
         vaild_overall_gain,
+        valid_annualized_sharpe_ratio,
+        validate_max_drawdown,
         sorted_stocks,
     ) = validate_model(
         final_model,
@@ -280,6 +283,7 @@ def train(
 
     wandb.log(
         {
+            "valid_day_number": valid_day_number,
             "valid_mae": valid_mae,
             "valid_mse": valid_mse,
             "valid_sign_acc": valid_sign_acc,
@@ -288,6 +292,8 @@ def train(
             "valid_f1": valid_f1,
             "valid_average_daily_gain": vaild_average_daily_gain,
             "valid_overall_gain": vaild_overall_gain,
+            "valid_annualized_sharpe_ratio": valid_annualized_sharpe_ratio,
+            "valid_max_drawdown": validate_max_drawdown,
         }
     )
 

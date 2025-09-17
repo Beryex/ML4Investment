@@ -16,6 +16,7 @@ class Settings:
     FETCH_PERIOD_DAYS: int = 30
     DATA_INTERVAL_MINS: int = 30
     DATA_PER_DAY: int = 13
+    TRADING_DAYS_PER_YEAR: int = 252
 
     # Feature Engineering
     CATEGORICAL_FEATURES: List[str] = ["stock_id", "sector_id"]

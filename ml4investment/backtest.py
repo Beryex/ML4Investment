@@ -51,6 +51,7 @@ def backtest(
     logger.info(f"Number of features in backtest data: {X_backtest.shape[1]}")
 
     (
+        backtest_day_number,
         backtest_mae,
         backtest_mse,
         backtest_sign_acc,
@@ -59,6 +60,8 @@ def backtest(
         backtest_f1,
         backtest_average_daily_gain,
         backtest_overall_gain,
+        backtest_annualized_sharpe_ratio,
+        backtest_max_drawdown,
         sorted_stocks,
     ) = get_detailed_static_result(
         model=model,
@@ -71,6 +74,7 @@ def backtest(
 
     wandb.log(
         {
+            "backtest_day_number": backtest_day_number,
             "backtest_mae": backtest_mae,
             "backtest_mse": backtest_mse,
             "backtest_sign_acc": backtest_sign_acc,
@@ -79,6 +83,8 @@ def backtest(
             "backtest_f1": backtest_f1,
             "backtest_average_daily_gain": backtest_average_daily_gain,
             "backtest_overall_gain": backtest_overall_gain,
+            "backtest_annualized_sharpe_ratio": backtest_annualized_sharpe_ratio,
+            "backtest_max_drawdown": backtest_max_drawdown,
         }
     )
 

@@ -16,6 +16,7 @@ class Settings:
     FETCH_PERIOD_DAYS: int = 30
     DATA_INTERVAL_MINS: int = 30
     DATA_PER_DAY: int = 13
+    TRADING_DAYS_PER_YEAR: int = 252
 
     # Feature Engineering
     CATEGORICAL_FEATURES: List[str] = ["stock_id", "sector_id"]
@@ -88,6 +89,10 @@ class Settings:
     # Evaluation
     TESTING_DATA_START_DATE: str = "2025-06-01"
     TESTING_DATA_END_DATE: Optional[str] = None
+    SHAP_PLOT_MAX_DISPLAY_FEATURES: int = 20
+    SHAP_SUMMARY_GLOBAL_IMG_PTH_TPL: str = "data/shap_summary_global_{}.png"
+    SHAP_SUMMARY_ERROR_IMG_PTH_TPL: str = "data/shap_summary_errors_{}.png"
+    SHAP_SUMMARY_CORRECT_IMG_PATH_TPL: str = "data/shap_summary_correct_{}.png"
 
 
 settings = Settings()

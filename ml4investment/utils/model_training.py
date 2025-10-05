@@ -69,11 +69,12 @@ def validate_model(
     y_validate: pd.Series,
     target_stock_list: list[str],
     verbose: bool = False,
-) -> tuple[float, float, float, float, float, float, float, float, list]:
+) -> tuple[int, float, float, float, float, float, float, float, float, float, float, list]:
     """Validate the model on the validation dataset"""
     logger.info("Starting model validation on the provided validation set.")
 
     (
+        valid_day_number,
         valid_mae,
         valid_mse,
         valid_sign_acc,
@@ -82,6 +83,8 @@ def validate_model(
         valid_f1,
         vaild_average_daily_gain,
         vaild_overall_gain,
+        valid_annualized_sharpe_ratio,
+        validate_max_drawdown,
         sorted_stocks,
     ) = get_detailed_static_result(
         model=model,
@@ -95,6 +98,7 @@ def validate_model(
     logger.info("Model validation completed.")
 
     return (
+        valid_day_number,
         valid_mae,
         valid_mse,
         valid_sign_acc,
@@ -103,6 +107,8 @@ def validate_model(
         valid_f1,
         vaild_average_daily_gain,
         vaild_overall_gain,
+        valid_annualized_sharpe_ratio,
+        validate_max_drawdown,
         sorted_stocks,
     )
 
@@ -235,7 +241,7 @@ def optimize_features(
     def objective(trial: optuna.Trial) -> float:
         candidate_features = categorical_features.copy()
         for feature in numerical_features:
-            if (trial.suggest_float(feature, 0.0, 1.0) >= 0.5):
+            if trial.suggest_float(feature, 0.0, 1.0) >= 0.5:
                 candidate_features.append(feature)
 
         if not candidate_features:
@@ -275,9 +281,7 @@ def optimize_features(
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
     logger.info(f"  Optimal Trial Value (Valid {settings.OPTIMIZE_METRIC}): {optimal_value:.4f}")
     if verbose:
-        logger.info(
-            f"  Optimal Trial Features: {optimal_features}"
-        )
+        logger.info(f"  Optimal Trial Features: {optimal_features}")
     logger.info(
         f"Final selected {len(optimal_features)} features after Optuna search, "
         f"select ratio: {len(optimal_features) / original_feature_number:.2f}"

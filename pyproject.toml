@@ -57,6 +57,7 @@ dependencies = [
     "pyyaml==6.0.2",
     "requests==2.32.4",
     "scikit-learn==1.6.1",
+    "shap>=0.45.0",
     "scipy==1.15.2",
     "setuptools==78.1.1",
     "six==1.17.0",

@@ -49,7 +49,7 @@ def backtest(
     logger.info(f"Newest date in backtest data: {end_date}")
     logger.info(f"Total processed samples in backtest data: {X_backtest.shape[0]}")
     logger.info(f"Number of features in backtest data: {X_backtest.shape[1]}")
-    
+
     (
         backtest_day_number,
         backtest_mae,

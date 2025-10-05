@@ -124,6 +124,12 @@ run_experiment() {
     mv "${DATA_DIR}/prod_model_hyperparams.json" "${RESULT_DIR}"
     mv "${DATA_DIR}/prod_model.model" "${RESULT_DIR}"
     mv "${DATA_DIR}/prod_process_feature_config.pkl" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_correct_Validation.png" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_errors_Validation.png" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_global_Validation.png" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_correct_Backtest.png" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_errors_Backtest.png" "${RESULT_DIR}"
+    mv "${DATA_DIR}/shap_summary_global_Backtest.png" "${RESULT_DIR}"
     mv "${CONFIG_DIR}/predict_stocks.json" "${RESULT_DIR}"
     mv "${LOG_DIR}" "${RESULT_DIR}"
 

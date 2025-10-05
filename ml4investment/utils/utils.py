@@ -7,10 +7,12 @@ from collections import defaultdict
 from typing import cast
 
 import lightgbm as lgb
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests.exceptions
 import schwabdev
+import shap
 from dotenv import load_dotenv
 from prettytable import PrettyTable
 from sklearn.metrics import (
@@ -72,6 +74,79 @@ def OptimalIterationLogger(eval_set_idx: int = 0, metric: str = "l1"):
     return OptimalIterationCallback(eval_set_idx, metric)
 
 
+def get_shap_analysis(
+    model: lgb.Booster,
+    X: pd.DataFrame,
+    y: pd.Series,
+    preds: np.ndarray,
+    name: str = "",
+):
+    """Perform SHAP analysis and generate summary plots"""
+    logger.info("Calculating SHAP values for feature contribution analysis...")
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X)
+    rng = np.random.default_rng(settings.SEED)
+    plot_name_suffix = name if name else "default"
+
+    # 1. Global Summary Plot
+    logger.info("Generating global SHAP summary plot...")
+    shap.summary_plot(
+        shap_values,
+        X,
+        show=False,
+        rng=rng,
+        max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
+    )
+    global_plot_path = settings.SHAP_SUMMARY_GLOBAL_IMG_PTH_TPL.format(plot_name_suffix)
+    plt.savefig(global_plot_path, bbox_inches="tight")
+    plt.close()
+    logger.info(f"Global SHAP summary plot saved to: {global_plot_path}")
+
+    # 2. Error Analysis Plot
+    logger.info("Generating SHAP summary plot for incorrect predictions...")
+    error_mask = np.sign(preds) != np.sign(y)
+    if np.any(error_mask):
+        shap_errors = shap_values[error_mask]
+        X_errors = X[error_mask]
+
+        shap.summary_plot(
+            shap_errors,
+            X_errors,
+            show=False,
+            rng=rng,
+            max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
+        )
+        plt.title(f"Feature Contributions on Errors ({name})")  # Set title after plotting
+        error_plot_path = settings.SHAP_SUMMARY_ERROR_IMG_PTH_TPL.format(plot_name_suffix)
+        plt.savefig(error_plot_path, bbox_inches="tight")
+        plt.close()
+        logger.info(f"SHAP error analysis plot saved to: {error_plot_path}")
+    else:
+        logger.info("No incorrect predictions found, skipping error analysis plot.")
+
+    # 3. Correct Prediction Analysis Plot
+    logger.info("Generating SHAP summary plot for correct predictions...")
+    correct_mask = np.sign(preds) == np.sign(y)
+    if np.any(correct_mask):
+        shap_correct = shap_values[correct_mask]
+        X_correct = X[correct_mask]
+
+        shap.summary_plot(
+            shap_correct,
+            X_correct,
+            show=False,
+            rng=rng,
+            max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
+        )
+        plt.title(f"Feature Contributions on Correct Predictions ({name})")
+        correct_plot_path = settings.SHAP_SUMMARY_CORRECT_IMG_PATH_TPL.format(plot_name_suffix)
+        plt.savefig(correct_plot_path, bbox_inches="tight")
+        plt.close()
+        logger.info(f"SHAP correct analysis plot saved to: {correct_plot_path}")
+    else:
+        logger.info("No correct predictions found, skipping correct analysis plot.")
+
+
 def get_detailed_static_result(
     model: lgb.Booster,
     X: pd.DataFrame,
@@ -83,6 +158,8 @@ def get_detailed_static_result(
     """Display detailed static result of the model predictions"""
     preds = model.predict(X, num_iteration=model.best_iteration)
     assert isinstance(preds, np.ndarray)
+
+    get_shap_analysis(model, X, y, preds, name)
 
     results_df = X[["stock_id"]].copy()
     results_df["y_actual"] = y

@@ -241,7 +241,7 @@ def optimize_features(
     def objective(trial: optuna.Trial) -> float:
         candidate_features = categorical_features.copy()
         for feature in numerical_features:
-            if (trial.suggest_float(feature, 0.0, 1.0) >= 0.5):
+            if trial.suggest_float(feature, 0.0, 1.0) >= 0.5:
                 candidate_features.append(feature)
 
         if not candidate_features:
@@ -281,9 +281,7 @@ def optimize_features(
     logger.info(f"Selected Optimal Trial Number: {optimal_trial.number}")
     logger.info(f"  Optimal Trial Value (Valid {settings.OPTIMIZE_METRIC}): {optimal_value:.4f}")
     if verbose:
-        logger.info(
-            f"  Optimal Trial Features: {optimal_features}"
-        )
+        logger.info(f"  Optimal Trial Features: {optimal_features}")
     logger.info(
         f"Final selected {len(optimal_features)} features after Optuna search, "
         f"select ratio: {len(optimal_features) / original_feature_number:.2f}"

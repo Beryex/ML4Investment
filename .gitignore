@@ -185,5 +185,4 @@ ml4investment/hyperparameter_search_logs/*
 ml4investment/results/*
 ml4investment/wandb/*
 ml4investment/tokens.json
-ml4investment/config/predict_stocks.json
 ml4investment/data/*

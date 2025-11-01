@@ -355,7 +355,7 @@ if __name__ == "__main__":
         default="data/prod_model_hyperparams.json",
     )
     parser.add_argument(
-        "--save_predict_stocks_pth", type=str, default="config/predict_stocks.json"
+        "--save_predict_stocks_pth", type=str, default="data/predict_stocks.json"
     )
 
     parser.add_argument("--verbose", "-v", action="store_true", default=False)

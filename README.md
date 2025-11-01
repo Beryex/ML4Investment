@@ -104,7 +104,7 @@ To get you familiar with the pipeline, here I introduce the main setting and the
 | Feature Selection Result            | [ml4investment/data/prod_features.json](ml4investment/data/prod_features.json)      |
 | Stocks for Training                 | [ml4investment/config/train_stocks.json](ml4investment/config/train_stocks.json)                |
 | Target Stocks                       | [ml4investment/config/target_stocks.json](ml4investment/config/target_stocks.json)              |
-| Stocks for Prediction               | [ml4investment/config/predict_stocks.json](ml4investment/config/predict_stocks.json)            |
+| Stocks for Prediction               | [ml4investment/data/predict_stocks.json](ml4investment/data/predict_stocks.json)            |
 > The stocks used for prediction is optimized from target stocks.
 
 To enhance model performance, consider refining the feature engineering process within [`ml4investment/utils/feature_calculating.py`](ml4investment/utils/feature_calculating.py) and [`ml4investment/utils/feature_processing.py`](ml4investment/utils/feature_processing.py) as well as optimizing the model training process in [`ml4investment/utils/model_training.py`](ml4investment/utils/model_training.py). 

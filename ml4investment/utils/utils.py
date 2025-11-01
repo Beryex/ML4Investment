@@ -481,45 +481,52 @@ def perform_schwab_trade(
     except KeyError:
         account_positions = {}
 
-    all_stocks_involved = list(account_positions.keys() | stock_to_buy_in.keys())
-    for stock in all_stocks_involved:
-        if stock in stock_to_buy_in and stock not in account_positions:
-            logger.info(f"New stock: Buy {stock_to_buy_in[stock]} share(s) of {stock}")
-            formatted_order = get_schwab_formatted_order(stock, "BUY", stock_to_buy_in[stock])
-            client.order_place(account_hash, formatted_order)
-        elif stock in account_positions and stock not in stock_to_buy_in:
-            logger.info(f"Existing stock: Sell {account_positions[stock]} share(s) of {stock}")
-            formatted_order = get_schwab_formatted_order(stock, "SELL", account_positions[stock])
-            client.order_place(account_hash, formatted_order)
+    sells: list[tuple[str, int]] = []
+    buys: list[tuple[str, int]] = []
+    unchanged: list[tuple[str, int]] = []
+
+    for stock, current_qty in account_positions.items():
+        target_qty = stock_to_buy_in.get(stock, 0)
+        current_int = int(current_qty)
+        target_int = int(target_qty)
+        diff = target_int - current_int
+        if diff < 0:
+            sells.append((stock, -diff))
+        elif diff > 0:
+            buys.append((stock, diff))
         else:
-            if stock_to_buy_in[stock] == account_positions[stock]:
-                logger.info(
-                    f"Existing stock: No change for {stock}, "
-                    f"already holding {account_positions[stock]} share(s)"
-                )
-            elif stock_to_buy_in[stock] > account_positions[stock]:
-                logger.info(
-                    f"Existing stock: Buy {stock_to_buy_in[stock] - account_positions[stock]} "
-                    f"additional share(s) of {stock}"
-                )
-                formatted_order = get_schwab_formatted_order(
-                    stock, "BUY", stock_to_buy_in[stock] - account_positions[stock]
-                )
-                client.order_place(account_hash, formatted_order)
-            else:
-                logger.info(
-                    f"Existing stock: Sell {account_positions[stock] - stock_to_buy_in[stock]} "
-                    f"share(s) of {stock}"
-                )
-                formatted_order = get_schwab_formatted_order(
-                    stock, "SELL", account_positions[stock] - stock_to_buy_in[stock]
-                )
-                client.order_place(account_hash, formatted_order)
+            unchanged.append((stock, current_int))
+
+    for stock, target_qty in stock_to_buy_in.items():
+        if stock not in account_positions:
+            buys.append((stock, int(target_qty)))
+
+    if unchanged:
+        logger.info(
+            "No change for existing stock %s",
+            ", ".join(f"{stock} ({qty} share(s))" for stock, qty in unchanged),
+        )
+
+    for stock, qty in sells:
+        qty_int = int(qty)
+        if qty_int <= 0:
+            continue
+        logger.info(f"Sell {qty_int} share(s) of {stock}")
+        formatted_order = get_schwab_formatted_order(stock, "SELL", qty_int)
+        client.order_place(account_hash, formatted_order)
+
+    for stock, qty in buys:
+        qty_int = int(qty)
+        if qty_int <= 0:
+            continue
+        logger.info(f"Buy {qty_int} share(s) of {stock}")
+        formatted_order = get_schwab_formatted_order(stock, "BUY", qty_int)
+        client.order_place(account_hash, formatted_order)
 
     logger.info("All new orders placed")
 
 
-def retry_api_call(func, max_retries=5, base_delay=2.0):
+def retry_api_call(func, max_retries=10, base_delay=2.0):
     """Retry API call with exponential backoff"""
     for attempt in range(max_retries + 1):
         try:

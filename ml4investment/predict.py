@@ -142,6 +142,7 @@ def predict(
     wandb.log({"daily_predictions": wandb_table})
 
     if args.perform_trading:
+        stock_to_buy_in = {k: v for k, v in stock_to_buy_in.items() if v > 0}
         perform_schwab_trade(client, account_hash, stock_to_buy_in)
 
     run.finish()
@@ -152,7 +153,7 @@ def predict(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
-    parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
+    parser.add_argument("--predict_stocks", "-ps", type=str, default="data/predict_stocks.json")
     parser.add_argument(
         "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
     )

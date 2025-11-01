@@ -23,7 +23,7 @@ def _apply_clipping_and_scaling(
     apply_clip = config.get("apply_clip")
     apply_scale = config.get("apply_scale")
 
-    data_before_clip = X_processed[numerical_cols]
+    data_before_clip = X_processed[numerical_cols].copy()
     if apply_clip == "global-level":
         bounds = config.get("bounds", {}).get("global")
         if bounds:
@@ -270,6 +270,18 @@ def process_features_for_predict(
 
     """ Preprocessing Features"""
     latest_df = daily_features_df.groupby("stock_code").tail(1).copy()
+
+    max_ts = latest_df.index.max()
+    lagging = latest_df[latest_df.index != max_ts]
+    if not lagging.empty:
+        logger.warning(
+            "Dropping %d stocks with stale data (latest snapshot: %s). Examples: %s",
+            len(lagging),
+            max_ts,
+            ", ".join(f"{code} @ {idx}" for idx, code in zip(lagging.index, lagging["stock_code"].head(5))),
+        )
+        latest_df = latest_df[latest_df.index == max_ts]
+
     assert latest_df.index.min() == latest_df.index.max()
     predict_df = latest_df[latest_df["stock_code"].isin(predict_stock_list)]
     original_data_points = len(predict_df)

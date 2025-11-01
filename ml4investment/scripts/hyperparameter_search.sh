@@ -130,7 +130,7 @@ run_experiment() {
     mv "${DATA_DIR}/shap_summary_correct_Backtest.png" "${RESULT_DIR}"
     mv "${DATA_DIR}/shap_summary_errors_Backtest.png" "${RESULT_DIR}"
     mv "${DATA_DIR}/shap_summary_global_Backtest.png" "${RESULT_DIR}"
-    mv "${CONFIG_DIR}/predict_stocks.json" "${RESULT_DIR}"
+    mv "${DATA_DIR}/predict_stocks.json" "${RESULT_DIR}"
     mv "${LOG_DIR}" "${RESULT_DIR}"
 
     echo ">> [SUCCESS] Finished experiment for combination: ${combination_str} at $(date)"

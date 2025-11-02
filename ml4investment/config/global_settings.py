@@ -83,6 +83,8 @@ class Settings:
     PREDICT_STOCK_NUMBER: int = 6
 
     # Prediction
+    # strategy chosen from BUY_LONG, SELL_SHORT, ADAPT, BOTH, BUY_LONG_FIRST
+    STOCK_SELECTION_STRATEGY: str = os.getenv("STOCK_SELECTION_STRATEGY", "BUY_LONG_FIRST")
     NUMBER_OF_STOCKS_TO_BUY: int = 1
     OPENING_STATUS: set[str] = {"PENDING_ACTIVATION", "WORKING", "OPEN", "QUEUED"}
 

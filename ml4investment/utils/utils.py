@@ -36,6 +36,12 @@ def set_random_seed(seed: int) -> None:
     np.random.seed(seed)
 
 
+def _coerce_stock_id(value):
+    if isinstance(value, (np.generic,)):
+        return int(value.item())
+    return int(value)
+
+
 def stock_code_to_id(stock_code: str) -> int:
     """Change the stock string to the sum of ASCII value of each char within the stock code"""
     return int(sum(ord(c) * 256**i for i, c in enumerate(reversed(stock_code))))
@@ -74,330 +80,6 @@ def OptimalIterationLogger(eval_set_idx: int = 0, metric: str = "l1"):
     return OptimalIterationCallback(eval_set_idx, metric)
 
 
-def get_shap_analysis(
-    model: lgb.Booster,
-    X: pd.DataFrame,
-    y: pd.Series,
-    preds: np.ndarray,
-    name: str = "",
-):
-    """Perform SHAP analysis and generate summary plots"""
-    logger.info("Calculating SHAP values for feature contribution analysis...")
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X)
-    rng = np.random.default_rng(settings.SEED)
-    plot_name_suffix = name if name else "default"
-
-    # 1. Global Summary Plot
-    logger.info("Generating global SHAP summary plot...")
-    shap.summary_plot(
-        shap_values,
-        X,
-        show=False,
-        rng=rng,
-        max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
-    )
-    global_plot_path = settings.SHAP_SUMMARY_GLOBAL_IMG_PTH_TPL.format(plot_name_suffix)
-    plt.savefig(global_plot_path, bbox_inches="tight")
-    plt.close()
-    logger.info(f"Global SHAP summary plot saved to: {global_plot_path}")
-
-    # 2. Error Analysis Plot
-    logger.info("Generating SHAP summary plot for incorrect predictions...")
-    error_mask = np.sign(preds) != np.sign(y)
-    if np.any(error_mask):
-        shap_errors = shap_values[error_mask]
-        X_errors = X[error_mask]
-
-        shap.summary_plot(
-            shap_errors,
-            X_errors,
-            show=False,
-            rng=rng,
-            max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
-        )
-        plt.title(f"Feature Contributions on Errors ({name})")  # Set title after plotting
-        error_plot_path = settings.SHAP_SUMMARY_ERROR_IMG_PTH_TPL.format(plot_name_suffix)
-        plt.savefig(error_plot_path, bbox_inches="tight")
-        plt.close()
-        logger.info(f"SHAP error analysis plot saved to: {error_plot_path}")
-    else:
-        logger.info("No incorrect predictions found, skipping error analysis plot.")
-
-    # 3. Correct Prediction Analysis Plot
-    logger.info("Generating SHAP summary plot for correct predictions...")
-    correct_mask = np.sign(preds) == np.sign(y)
-    if np.any(correct_mask):
-        shap_correct = shap_values[correct_mask]
-        X_correct = X[correct_mask]
-
-        shap.summary_plot(
-            shap_correct,
-            X_correct,
-            show=False,
-            rng=rng,
-            max_display=settings.SHAP_PLOT_MAX_DISPLAY_FEATURES,
-        )
-        plt.title(f"Feature Contributions on Correct Predictions ({name})")
-        correct_plot_path = settings.SHAP_SUMMARY_CORRECT_IMG_PATH_TPL.format(plot_name_suffix)
-        plt.savefig(correct_plot_path, bbox_inches="tight")
-        plt.close()
-        logger.info(f"SHAP correct analysis plot saved to: {correct_plot_path}")
-    else:
-        logger.info("No correct predictions found, skipping correct analysis plot.")
-
-
-def get_detailed_static_result(
-    model: lgb.Booster,
-    X: pd.DataFrame,
-    y: pd.Series,
-    predict_stock_list: list,
-    name: str = "",
-    verbose: bool = True,
-) -> tuple[int, float, float, float, float, float, float, float, float, float, float, list[str]]:
-    """Display detailed static result of the model predictions"""
-    preds = model.predict(X, num_iteration=model.best_iteration)
-    assert isinstance(preds, np.ndarray)
-
-    get_shap_analysis(model, X, y, preds, name)
-
-    results_df = X[["stock_id"]].copy()
-    results_df["y_actual"] = y
-    results_df["prediction"] = preds
-
-    """Compute overall metrics"""
-    mae_overall = mean_absolute_error(results_df["y_actual"], results_df["prediction"])
-    mse_overall = mean_squared_error(results_df["y_actual"], results_df["prediction"])
-    sign_acc_overall = float(
-        (np.sign(results_df["y_actual"]) == np.sign(results_df["prediction"])).mean()
-    )
-
-    binary_y_true = (results_df["y_actual"] > 0).astype(int)
-    binary_y_pred = (results_df["prediction"] > 0).astype(int)
-    precision_overall = float(precision_score(binary_y_true, binary_y_pred, zero_division=0))
-    recall_overall = float(recall_score(binary_y_true, binary_y_pred, zero_division=0))
-    f1_overall = float(f1_score(binary_y_true, binary_y_pred, zero_division=0))
-
-    """Compute stock-level metrics"""
-    stock_metrics = defaultdict(dict)
-
-    for stock_id, stock_df in results_df.groupby("stock_id", observed=True):
-        stock_code = id_to_stock_code(int(stock_id))  # type: ignore
-        if stock_code not in predict_stock_list:
-            continue
-
-        y_true_stock = stock_df["y_actual"]
-        y_pred_stock = stock_df["prediction"]
-
-        stock_metrics[stock_code]["mae"] = mean_absolute_error(y_true_stock, y_pred_stock)
-        stock_metrics[stock_code]["mse"] = mean_squared_error(y_true_stock, y_pred_stock)
-        stock_metrics[stock_code]["sign_acc"] = (
-            np.sign(y_true_stock) == np.sign(y_pred_stock)
-        ).mean()
-
-        b_y_true = (y_true_stock > 0).astype(int)
-        b_y_pred = (y_pred_stock > 0).astype(int)
-        stock_metrics[stock_code]["precision"] = precision_score(
-            b_y_true, b_y_pred, zero_division=0
-        )
-        stock_metrics[stock_code]["recall"] = recall_score(b_y_true, b_y_pred, zero_division=0)
-        stock_metrics[stock_code]["f1"] = f1_score(b_y_true, b_y_pred, zero_division=0)
-
-        positive_mask = y_pred_stock > 0
-        if positive_mask.any():
-            gain_factors = 1 + y_true_stock[positive_mask]
-            overall_gain = gain_factors.prod()
-        else:
-            overall_gain = 1.0
-        stock_metrics[stock_code]["overall_gain"] = overall_gain
-        stock_metrics[stock_code]["avg_daily_gain"] = cast(float, overall_gain) ** (
-            1 / len(stock_df)
-        )
-
-    """Compute daily-level metrics"""
-    gain_actual = 1.0
-    daily_results_table_data = []
-    daily_returns_list = []
-    k = settings.NUMBER_OF_STOCKS_TO_BUY
-
-    unique_days = results_df.index.unique()
-    day_number = len(unique_days)
-
-    for date, daily_df in results_df.groupby(results_df.index):
-        daily_df_filtered = daily_df[
-            daily_df["stock_id"].map(id_to_stock_code).isin(predict_stock_list)
-        ]
-
-        positive_preds_df = daily_df_filtered[daily_df_filtered["prediction"] > 0]
-
-        top_predicted = positive_preds_df.sort_values("prediction", ascending=False).head(k)
-
-        if top_predicted.empty:
-            daily_gain_predict = 1.0
-            daily_gain_actual = 1.0
-        else:
-            total_prediction_sum = top_predicted["prediction"].sum()
-            top_predicted["weights"] = top_predicted["prediction"] / total_prediction_sum
-            daily_gain_predict = (
-                (1 + top_predicted["prediction"]) * top_predicted["weights"]
-            ).sum()
-            daily_gain_actual = ((1 + top_predicted["y_actual"]) * top_predicted["weights"]).sum()
-
-        daily_returns_list.append(daily_gain_actual - 1)
-
-        top_actual = daily_df_filtered.sort_values("y_actual", ascending=False).head(k)
-
-        if top_actual.empty:
-            daily_gain_optimal = 1.0
-        else:
-            daily_gain_optimal = (1 + top_actual["y_actual"]).mean()
-
-        gain_actual *= daily_gain_actual
-
-        daily_results_table_data.append(
-            {
-                "day": date.strftime("%Y-%m-%d"),
-                "daily_gain_predict": daily_gain_predict,
-                "daily_gain_actual": daily_gain_actual,
-                "daily_gain_optimal": daily_gain_optimal,
-                "predict_optimal_stocks": [
-                    id_to_stock_code(sid) for sid in top_predicted["stock_id"]
-                ],
-                "actual_optimal_stocks": [id_to_stock_code(sid) for sid in top_actual["stock_id"]],
-                "cumulative_gain": gain_actual,
-            }
-        )
-
-    average_daily_gain = gain_actual ** (1 / day_number) if day_number > 0 else 1.0
-
-    daily_returns_np = np.array(daily_returns_list)
-    if np.std(daily_returns_np) > 0:
-        daily_sharpe_ratio = np.mean(daily_returns_np) / np.std(daily_returns_np)
-        annualized_sharpe_ratio = daily_sharpe_ratio * np.sqrt(settings.TRADING_DAYS_PER_YEAR)
-    else:
-        annualized_sharpe_ratio = 0.0
-
-    cumulative_returns = np.cumprod(1 + daily_returns_np)
-    peak = np.maximum.accumulate(cumulative_returns)
-    drawdown = (cumulative_returns - peak) / peak
-    max_drawdown = np.min(drawdown) if len(drawdown) > 0 else 0.0
-
-    sorted_stocks = sorted(
-        stock_metrics.keys(),
-        key=lambda s: stock_metrics[s][settings.PREDICT_STOCK_OPTIMIZE_METRIC],
-        reverse=True,
-    )
-
-    start_date = X.index.min()
-    end_date = X.index.max()
-
-    if verbose:
-        stock_static_table = PrettyTable()
-        stock_static_table.field_names = [
-            "Stock",
-            "MAE",
-            "MSE",
-            "Sign Acc",
-            "Precision",
-            "Recall",
-            "F1",
-            "Avg Daily Gain",
-            "Overall Gain",
-        ]
-        for stock in sorted_stocks:
-            metrics = stock_metrics[stock]
-            stock_static_table.add_row(
-                [
-                    stock,
-                    f"{metrics['mae']:.7f}",
-                    f"{metrics['mse']:.7f}",
-                    f"{metrics['sign_acc'] * 100:.2f}%",
-                    f"{metrics['precision'] * 100:.2f}%",
-                    f"{metrics['recall'] * 100:.2f}%",
-                    f"{metrics['f1'] * 100:.2f}%",
-                    f"{metrics['avg_daily_gain']:+.4%}",
-                    f"{metrics['overall_gain']:+.2%}",
-                ],
-                divider=True,
-            )
-        title_str = f"{name} Stock-level Static Result from {start_date} to {end_date}"
-        logger.info(f"\n{stock_static_table.get_string(title=title_str)}")
-
-        daily_static_table = PrettyTable()
-        daily_static_table.field_names = [
-            "Day",
-            "Predict Daily Gain",
-            "Actual Daily Gain",
-            "Optimal Daily Gain",
-            "Predicted Stocks",
-            "Optimal Stocks",
-            "Cumulative Gain",
-        ]
-        for res in daily_results_table_data:
-            daily_static_table.add_row(
-                [
-                    res["day"],
-                    f"{res['daily_gain_predict']:+.2%}",
-                    f"{res['daily_gain_actual']:+.2%}",
-                    f"{res['daily_gain_optimal']:+.2%}",
-                    res["predict_optimal_stocks"],
-                    res["actual_optimal_stocks"],
-                    f"{res['cumulative_gain']:+.2%}",
-                ],
-                divider=True,
-            )
-        title_str = f"{name} Daily-level Static Result from {start_date} to {end_date}"
-        logger.info(f"\n{daily_static_table.get_string(title=title_str)}")
-
-    overall_static_table = PrettyTable()
-    overall_static_table.field_names = [
-        "Trading Days",
-        "MAE",
-        "MSE",
-        "Sign Acc",
-        "Precision",
-        "Recall",
-        "F1",
-        "Avg Daily Gain",
-        "Overall Gain",
-        "Annualized Sharpe Ratio",
-        "Max Drawdown",
-    ]
-    overall_static_table.add_row(
-        [
-            f"{day_number}",
-            f"{mae_overall:.7f}",
-            f"{mse_overall:.7f}",
-            f"{sign_acc_overall * 100:.2f}%",
-            f"{precision_overall * 100:.2f}%",
-            f"{recall_overall * 100:.2f}%",
-            f"{f1_overall * 100:.2f}%",
-            f"{average_daily_gain:+.4%}",
-            f"{gain_actual:+.2%}",
-            f"{annualized_sharpe_ratio:.3f}",
-            f"{max_drawdown:.2%}",
-        ],
-        divider=True,
-    )
-    title_str = f"{name} Overall Static Result from {start_date} to {end_date}"
-    logger.info(f"\n{overall_static_table.get_string(title=title_str)}")
-
-    return (
-        day_number,
-        mae_overall,
-        mse_overall,
-        sign_acc_overall,
-        precision_overall,
-        recall_overall,
-        f1_overall,
-        average_daily_gain,
-        gain_actual,
-        annualized_sharpe_ratio,
-        max_drawdown,
-        sorted_stocks,
-    )
-
-
 def setup_schwab_client() -> tuple[schwabdev.Client, str]:
     """Setup Schwab client with API keys from environment variables."""
     load_dotenv()
@@ -432,9 +114,11 @@ def get_schwab_formatted_order(symbol: str, instruction: str, quantity: int) -> 
 
 
 def perform_schwab_trade(
-    client: schwabdev.Client, account_hash: str, stock_to_buy_in: dict
+    client: schwabdev.Client,
+    account_hash: str,
+    stock_to_execute: dict[str, dict[str, int | str]],
 ) -> None:
-    """Execute all required trading on schwab via api"""
+    """Execute required long/short trades on Schwab via API."""
     now_et = pd.Timestamp.now(tz="America/New_York")
     if now_et.weekday() < 5:
         # Define trading hours
@@ -456,6 +140,19 @@ def perform_schwab_trade(
         datetime.datetime.now(datetime.timezone.utc),
     ).json()
 
+    account_positions = {}
+    positions_payload = client.account_details(account_hash, fields="positions").json()[
+        "securitiesAccount"
+    ].get("positions", [])
+    for position in positions_payload:
+        symbol = position["instrument"]["symbol"]
+        long_qty = int(position.get("longQuantity", 0))
+        short_qty = int(position.get("shortQuantity", 0))
+        account_positions[symbol] = long_qty - short_qty
+    logger.info(f"Current account positions: ")
+    for stock, qty in account_positions.items():
+        logger.info(f"  {stock}: {qty} share(s)")
+
     logger.info("Canceling previous active orders...")
     opening_orders = [
         order for order in account_orders if order.get("status") in settings.OPENING_STATUS
@@ -469,58 +166,72 @@ def perform_schwab_trade(
         )
         client.order_cancel(account_hash, order["orderId"])
     logger.info("All previous active orders canceled")
-
+    
     logger.info("Placing new orders...")
-    try:
-        account_positions = {
-            position["instrument"]["symbol"]: position["longQuantity"]
-            for position in client.account_details(account_hash, fields="positions").json()[
-                "securitiesAccount"
-            ]["positions"]
-        }
-    except KeyError:
-        account_positions = {}
 
-    sells: list[tuple[str, int]] = []
-    buys: list[tuple[str, int]] = []
+    target_positions: dict[str, int] = {}
+    for stock, info in stock_to_execute.items():
+        action = str(info.get("action", "")).upper()
+        shares = int(info.get("shares_to_execute", 0))
+        if shares < 0:
+            logger.warning("Negative share request for %s, skipping", stock)
+            continue
+        if action not in {"BUY_LONG", "SELL_SHORT"}:
+            logger.warning("Unknown action %s for %s, skipping", action, stock)
+            continue
+        target_positions[stock] = -shares if action == "SELL_SHORT" else shares
+
+    orders: list[tuple[str, str, int]] = []
     unchanged: list[tuple[str, int]] = []
 
-    for stock, current_qty in account_positions.items():
-        target_qty = stock_to_buy_in.get(stock, 0)
-        current_int = int(current_qty)
-        target_int = int(target_qty)
-        diff = target_int - current_int
-        if diff < 0:
-            sells.append((stock, -diff))
-        elif diff > 0:
-            buys.append((stock, diff))
-        else:
-            unchanged.append((stock, current_int))
+    all_symbols = set(account_positions.keys()) | set(target_positions.keys())
 
-    for stock, target_qty in stock_to_buy_in.items():
-        if stock not in account_positions:
-            buys.append((stock, int(target_qty)))
+    for stock in sorted(all_symbols):
+        current = int(account_positions.get(stock, 0))
+        desired = int(target_positions.get(stock, 0))
+
+        if current == desired:
+            if current != 0:
+                unchanged.append((stock, current))
+            continue
+
+        if current > 0:
+            if desired >= 0:
+                diff = desired - current
+                if diff > 0:
+                    orders.append((stock, "BUY", diff))
+                elif diff < 0:
+                    orders.append((stock, "SELL", -diff))
+            else:
+                orders.append((stock, "SELL", current))
+                short_target = -desired
+                if short_target > 0:
+                    orders.append((stock, "SELL_SHORT", short_target))
+        else:
+            if desired <= 0:
+                diff = desired - current
+                if diff > 0:
+                    orders.append((stock, "BUY_TO_COVER", diff))
+                elif diff < 0:
+                    orders.append((stock, "SELL_SHORT", -diff))
+            else:
+                if current < 0:
+                    orders.append((stock, "BUY_TO_COVER", -current))
+                if desired > 0:
+                    orders.append((stock, "BUY", desired))
 
     if unchanged:
         logger.info(
             "No change for existing stock %s",
-            ", ".join(f"{stock} ({qty} share(s))" for stock, qty in unchanged),
+            ", ".join(f"{symbol} ({qty} share(s))" for symbol, qty in unchanged),
         )
 
-    for stock, qty in sells:
+    for stock, instruction, qty in orders:
         qty_int = int(qty)
         if qty_int <= 0:
             continue
-        logger.info(f"Sell {qty_int} share(s) of {stock}")
-        formatted_order = get_schwab_formatted_order(stock, "SELL", qty_int)
-        client.order_place(account_hash, formatted_order)
-
-    for stock, qty in buys:
-        qty_int = int(qty)
-        if qty_int <= 0:
-            continue
-        logger.info(f"Buy {qty_int} share(s) of {stock}")
-        formatted_order = get_schwab_formatted_order(stock, "BUY", qty_int)
+        logger.info("%s %d share(s) of %s", instruction.replace("_", " "), qty_int, stock)
+        formatted_order = get_schwab_formatted_order(stock, instruction, qty_int)
         client.order_place(account_hash, formatted_order)
 
     logger.info("All new orders placed")

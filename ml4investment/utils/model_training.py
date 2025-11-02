@@ -14,7 +14,8 @@ from optuna.integration import LightGBMPruningCallback  # type: ignore
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.data_loader import sample_training_data
-from ml4investment.utils.utils import OptimalIterationLogger, get_detailed_static_result
+from ml4investment.utils.model_backtesting import get_detailed_static_result
+from ml4investment.utils.utils import OptimalIterationLogger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)

@@ -17,7 +17,10 @@ from sklearn.metrics import (
 )
 
 from ml4investment.config.global_settings import settings
-from ml4investment.utils.model_predicting import get_stocks_portfolio
+from ml4investment.utils.model_predicting import (
+    get_prev_actual_ranking,
+    get_stocks_portfolio,
+)
 from ml4investment.utils.utils import _coerce_stock_id, id_to_stock_code
 
 logger = logging.getLogger(__name__)
@@ -111,6 +114,10 @@ def get_detailed_static_result(
     get_shap_analysis(model, X, y, preds, name)
 
     results_df = X[["stock_id"]].copy()
+    results_df["stock_code"] = results_df["stock_id"].apply(
+        lambda value: id_to_stock_code(_coerce_stock_id(value))
+    )
+    results_df = results_df.drop(columns=["stock_id"])
     results_df["y_actual"] = y
     results_df["prediction"] = preds
 
@@ -130,8 +137,7 @@ def get_detailed_static_result(
     """Compute stock-level metrics"""
     stock_metrics = defaultdict(dict)
 
-    for stock_id, stock_df in results_df.groupby("stock_id", observed=True):
-        stock_code = id_to_stock_code(int(stock_id))  # type: ignore
+    for stock_code, stock_df in results_df.groupby("stock_code", observed=True):
         if stock_code not in predict_stock_list:
             continue
 
@@ -189,10 +195,9 @@ def get_detailed_static_result(
     day_number = len(unique_days)
 
     logger.info(f"Selecting stocks using strategy: {settings.STOCK_SELECTION_STRATEGY}")
+    logger.info(f"Using momentum weight: {settings.STOCK_SELECTION_MOMENTUM:.2f}")
     for date, daily_df in results_df.groupby(results_df.index):
-        daily_df_filtered = daily_df[
-            daily_df["stock_id"].map(id_to_stock_code).isin(predict_stock_list)
-        ]
+        daily_df_filtered = daily_df[daily_df["stock_code"].isin(predict_stock_list)]
 
         positive_preds_df = daily_df_filtered[daily_df_filtered["prediction"] > 0]
 
@@ -204,7 +209,13 @@ def get_detailed_static_result(
             (daily_df_filtered["y_actual"] > 0).mean() if total_candidates else 0.0
         )
 
-        selected_portfolio = get_stocks_portfolio(daily_df_filtered)
+        prev_actuals = get_prev_actual_ranking(
+            stock_codes=daily_df_filtered["stock_code"],
+            historical_df=results_df,
+            current_ts=date,
+            actual_col="y_actual",
+        )
+        selected_portfolio = get_stocks_portfolio(daily_df_filtered, prev_actuals=prev_actuals)
 
         if selected_portfolio.empty:
             daily_gain_predict = 1.0
@@ -231,21 +242,15 @@ def get_detailed_static_result(
         daily_returns_list.append(daily_gain_actual - 1)
 
         predicted_long_stocks = [
-            id_to_stock_code(_coerce_stock_id(row.stock_id))
-            for row in selected_portfolio.itertuples()
-            if row.action == "BUY_LONG"
+            row.stock_code for row in selected_portfolio.itertuples() if row.action == "BUY_LONG"
         ]
         predicted_short_stocks = [
-            id_to_stock_code(_coerce_stock_id(row.stock_id))
-            for row in selected_portfolio.itertuples()
-            if row.action == "SELL_SHORT"
+            row.stock_code for row in selected_portfolio.itertuples() if row.action == "SELL_SHORT"
         ]
 
         optimal_buy_long_df = daily_df_filtered.sort_values("y_actual", ascending=False).head(1)
         if not optimal_buy_long_df.empty:
-            optimal_buy_long_stocks = [
-                id_to_stock_code(_coerce_stock_id(optimal_buy_long_df.iloc[0]["stock_id"]))
-            ]
+            optimal_buy_long_stocks = [optimal_buy_long_df.iloc[0]["stock_code"]]
             optimal_buy_long_gain = float(1 + optimal_buy_long_df.iloc[0]["y_actual"])
         else:
             optimal_buy_long_stocks = []
@@ -253,9 +258,7 @@ def get_detailed_static_result(
 
         optimal_sell_short_df = daily_df_filtered.sort_values("y_actual", ascending=True).head(1)
         if not optimal_sell_short_df.empty:
-            optimal_sell_short_stocks = [
-                id_to_stock_code(_coerce_stock_id(optimal_sell_short_df.iloc[0]["stock_id"]))
-            ]
+            optimal_sell_short_stocks = [optimal_sell_short_df.iloc[0]["stock_code"]]
             optimal_sell_short_gain = float(1 - optimal_sell_short_df.iloc[0]["y_actual"])
         else:
             optimal_sell_short_stocks = []

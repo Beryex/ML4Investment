@@ -14,7 +14,10 @@ from ml4investment.config.global_settings import settings
 from ml4investment.utils.feature_calculating import calculate_features
 from ml4investment.utils.feature_processing import process_features_for_predict
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.model_predicting import get_stocks_portfolio
+from ml4investment.utils.model_predicting import (
+    get_prev_actual_ranking,
+    get_stocks_portfolio,
+)
 from ml4investment.utils.utils import (
     id_to_stock_code,
     perform_schwab_trade,
@@ -88,7 +91,15 @@ def predict(
     )
 
     logger.info(f"Selecting stocks using strategy: {settings.STOCK_SELECTION_STRATEGY}")
-    recommended_df = get_stocks_portfolio(sorted_results)
+    logger.info(f"Using momentum weight: {settings.STOCK_SELECTION_MOMENTUM:.2f}")
+    current_ts = sorted_results.index.max()
+    prev_actuals = get_prev_actual_ranking(
+        stock_codes=sorted_results["stock_code"],
+        historical_df=daily_features_data,
+        current_ts=current_ts,
+        actual_col="Target",
+    )
+    recommended_df = get_stocks_portfolio(sorted_results, prev_actuals=prev_actuals)
 
     if recommended_df.empty:
         logger.info("No stocks were recommended today (strategy produced no candidates)")

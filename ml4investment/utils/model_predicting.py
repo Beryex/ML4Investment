@@ -1,27 +1,7 @@
-import datetime
 import logging
-import os
-import random
-import time
-from collections import defaultdict
-from typing import cast
 
-import lightgbm as lgb
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import requests.exceptions
-import schwabdev
-import shap
-from dotenv import load_dotenv
-from prettytable import PrettyTable
-from sklearn.metrics import (
-    f1_score,
-    mean_absolute_error,
-    mean_squared_error,
-    precision_score,
-    recall_score,
-)
 
 from ml4investment.config.global_settings import settings
 
@@ -52,9 +32,11 @@ def get_stocks_portfolio(candidates: pd.DataFrame) -> pd.DataFrame:
         if eligible.empty:
             return _empty_like(candidates)
 
-        selected = eligible.sort_values(by="prediction", ascending=ascending).head(
-            settings.NUMBER_OF_STOCKS_TO_BUY
-        ).copy()
+        selected = (
+            eligible.sort_values(by="prediction", ascending=ascending)
+            .head(settings.NUMBER_OF_STOCKS_TO_BUY)
+            .copy()
+        )
         if selected.empty:
             return _empty_like(candidates)
 
@@ -95,7 +77,9 @@ def get_stocks_portfolio(candidates: pd.DataFrame) -> pd.DataFrame:
         abs_sorted = non_zero.assign(_abs_pred=non_zero["prediction"].abs()).sort_values(
             by="_abs_pred", ascending=False
         )
-        selected = abs_sorted.head(settings.NUMBER_OF_STOCKS_TO_BUY).drop(columns="_abs_pred").copy()
+        selected = (
+            abs_sorted.head(settings.NUMBER_OF_STOCKS_TO_BUY).drop(columns="_abs_pred").copy()
+        )
         if selected.empty:
             return _empty_like(candidates)
 
@@ -121,9 +105,9 @@ def get_stocks_portfolio(candidates: pd.DataFrame) -> pd.DataFrame:
         if remaining_slots > 0:
             short_candidates = candidates[candidates["prediction"] < 0.0].copy()
             if not short_candidates.empty:
-                short_selected = short_candidates.sort_values(by="prediction", ascending=True).head(
-                    remaining_slots
-                )
+                short_selected = short_candidates.sort_values(
+                    by="prediction", ascending=True
+                ).head(remaining_slots)
 
         combined = pd.concat([long_selected, short_selected])
         if combined.empty:

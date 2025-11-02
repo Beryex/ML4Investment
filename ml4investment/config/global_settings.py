@@ -79,7 +79,8 @@ class Settings:
         os.getenv("MODEL_OPTIMIZATION_SAMPLING_MULTIVARIATE", "true").lower() == "true"
     )
     HYPERPARAMETER_SEARCH_LIMIT: int = int(os.getenv("HYPERPARAMETER_SEARCH_LIMIT", 100))
-    PREDICT_STOCK_OPTIMIZE_METRIC: str = "overall_gain"
+    PREDICT_STOCK_OPTIMIZE_METRIC: str = "sharpe_ratio"
+    PREDICT_STOCK_OPTIMIZE_MAX_DRAWDOWN_THRESHOLD: float = 0.10
     PREDICT_STOCK_NUMBER: int = 6
 
     # Prediction

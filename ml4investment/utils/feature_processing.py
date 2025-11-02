@@ -278,7 +278,9 @@ def process_features_for_predict(
             "Dropping %d stocks with stale data (latest snapshot: %s). Examples: %s",
             len(lagging),
             max_ts,
-            ", ".join(f"{code} @ {idx}" for idx, code in zip(lagging.index, lagging["stock_code"].head(5))),
+            ", ".join(
+                f"{code} @ {idx}" for idx, code in zip(lagging.index, lagging["stock_code"])
+            ),
         )
         latest_df = latest_df[latest_df.index == max_ts]
 

@@ -3,25 +3,12 @@ import logging
 import os
 import random
 import time
-from collections import defaultdict
-from typing import cast
 
-import lightgbm as lgb
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests.exceptions
 import schwabdev
-import shap
 from dotenv import load_dotenv
-from prettytable import PrettyTable
-from sklearn.metrics import (
-    f1_score,
-    mean_absolute_error,
-    mean_squared_error,
-    precision_score,
-    recall_score,
-)
 
 from ml4investment.config.global_settings import settings
 
@@ -141,15 +128,17 @@ def perform_schwab_trade(
     ).json()
 
     account_positions = {}
-    positions_payload = client.account_details(account_hash, fields="positions").json()[
-        "securitiesAccount"
-    ].get("positions", [])
+    positions_payload = (
+        client.account_details(account_hash, fields="positions")
+        .json()["securitiesAccount"]
+        .get("positions", [])
+    )
     for position in positions_payload:
         symbol = position["instrument"]["symbol"]
         long_qty = int(position.get("longQuantity", 0))
         short_qty = int(position.get("shortQuantity", 0))
         account_positions[symbol] = long_qty - short_qty
-    logger.info(f"Current account positions: ")
+    logger.info("Current account positions: ")
     for stock, qty in account_positions.items():
         logger.info(f"  {stock}: {qty} share(s)")
 
@@ -166,7 +155,7 @@ def perform_schwab_trade(
         )
         client.order_cancel(account_hash, order["orderId"])
     logger.info("All previous active orders canceled")
-    
+
     logger.info("Placing new orders...")
 
     target_positions: dict[str, int] = {}

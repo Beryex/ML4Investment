@@ -1,8 +1,4 @@
-import datetime
 import logging
-import os
-import random
-import time
 from collections import defaultdict
 from typing import cast
 
@@ -10,10 +6,7 @@ import lightgbm as lgb
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import requests.exceptions
-import schwabdev
 import shap
-from dotenv import load_dotenv
 from prettytable import PrettyTable
 from sklearn.metrics import (
     f1_score,
@@ -25,7 +18,7 @@ from sklearn.metrics import (
 
 from ml4investment.config.global_settings import settings
 from ml4investment.utils.model_predicting import get_stocks_portfolio
-from ml4investment.utils.utils import id_to_stock_code, _coerce_stock_id
+from ml4investment.utils.utils import _coerce_stock_id, id_to_stock_code
 
 logger = logging.getLogger(__name__)
 
@@ -170,11 +163,27 @@ def get_detailed_static_result(
             1 / len(stock_df)
         )
 
+        # Sharpe ratio and max drawdown
+        returns_series = y_true_stock.copy()
+        daily_returns_np_stock = returns_series.to_numpy()
+        if np.std(daily_returns_np_stock) > 0:
+            sharpe_ratio = np.mean(daily_returns_np_stock) / np.std(daily_returns_np_stock)
+            sharpe_ratio *= np.sqrt(settings.TRADING_DAYS_PER_YEAR)
+        else:
+            sharpe_ratio = 0.0
+
+        cumulative_returns_stock = np.cumprod(1 + daily_returns_np_stock)
+        peak_stock = np.maximum.accumulate(cumulative_returns_stock)
+        drawdown_stock = (cumulative_returns_stock - peak_stock) / peak_stock
+        max_drawdown_stock = np.min(drawdown_stock) if len(drawdown_stock) > 0 else 0.0
+
+        stock_metrics[stock_code]["sharpe_ratio"] = sharpe_ratio
+        stock_metrics[stock_code]["max_drawdown"] = max_drawdown_stock
+
     """Compute daily-level metrics"""
     gain_actual = 1.0
     daily_results_table_data = []
     daily_returns_list = []
-    k = settings.NUMBER_OF_STOCKS_TO_BUY
 
     unique_days = results_df.index.unique()
     day_number = len(unique_days)
@@ -285,9 +294,11 @@ def get_detailed_static_result(
     drawdown = (cumulative_returns - peak) / peak
     max_drawdown = np.min(drawdown) if len(drawdown) > 0 else 0.0
 
+    optimize_metric = settings.PREDICT_STOCK_OPTIMIZE_METRIC
+
     sorted_stocks = sorted(
         stock_metrics.keys(),
-        key=lambda s: stock_metrics[s][settings.PREDICT_STOCK_OPTIMIZE_METRIC],
+        key=lambda s: stock_metrics[s].get(optimize_metric, 0.0),
         reverse=True,
     )
 
@@ -306,6 +317,8 @@ def get_detailed_static_result(
             "F1",
             "Avg Daily Gain",
             "Overall Gain",
+            "Sharpe Ratio",
+            "Max Drawdown",
         ]
         for stock in sorted_stocks:
             metrics = stock_metrics[stock]
@@ -320,6 +333,8 @@ def get_detailed_static_result(
                     f"{metrics['f1'] * 100:.2f}%",
                     f"{metrics['avg_daily_gain']:+.4%}",
                     f"{metrics['overall_gain']:+.2%}",
+                    f"{metrics['sharpe_ratio']:.3f}",
+                    f"{metrics['max_drawdown']:.2%}",
                 ],
                 divider=True,
             )

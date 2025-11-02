@@ -101,10 +101,9 @@ def predict(
             recommended_df["invest_value"] / recommended_df["last_price"]
         ).apply(math.floor)
 
-        stock_to_execute = (
-            recommended_df.set_index("stock_code")[["shares_to_execute", "action"]]
-            .to_dict("index")
-        )
+        stock_to_execute = recommended_df.set_index("stock_code")[
+            ["shares_to_execute", "action"]
+        ].to_dict("index")
 
         for _, row in recommended_df.iterrows():
             table_row = [

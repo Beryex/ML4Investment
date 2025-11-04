@@ -86,12 +86,18 @@ def process_raw_data(
 
     """ Filter non-trading dates """
     assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
-    unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
+    unique_dates = cur_processed_df.index.normalize()
+    if unique_dates.tz is not None:
+        unique_dates = unique_dates.tz_localize(None)
+    unique_dates = unique_dates.unique()
     schedule_in_range = nyse.schedule(start_date=unique_dates.min(), end_date=unique_dates.max())
     assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
-    trading_days_set = set(pd.to_datetime(schedule_in_range.index.date))
+    schedule_index = schedule_in_range.index.normalize()
+    if schedule_index.tz is not None:
+        schedule_index = schedule_index.tz_localize(None)
+    trading_days_set = set(schedule_index)
 
-    non_trading_dates_mask = ~pd.Series(unique_dates).isin(list(trading_days_set))
+    non_trading_dates_mask = ~unique_dates.isin(trading_days_set)
     non_trading_dates_found = unique_dates[non_trading_dates_mask]
 
     if not non_trading_dates_found.empty:
@@ -108,11 +114,17 @@ def process_raw_data(
 
     """ Filter missing trading dates """
     assert isinstance(cur_processed_df.index, pd.DatetimeIndex)
-    unique_dates = pd.to_datetime(cur_processed_df.index.date).unique()
+    unique_dates = cur_processed_df.index.normalize()
+    if unique_dates.tz is not None:
+        unique_dates = unique_dates.tz_localize(None)
+    unique_dates = unique_dates.unique()
     unique_dates_set = set(unique_dates)
     schedule_in_range = nyse.schedule(start_date=unique_dates.min(), end_date=unique_dates.max())
     assert isinstance(schedule_in_range.index, pd.DatetimeIndex)
-    all_trading_days_in_range = set(pd.to_datetime(schedule_in_range.index.date))
+    schedule_index = schedule_in_range.index.normalize()
+    if schedule_index.tz is not None:
+        schedule_index = schedule_index.tz_localize(None)
+    all_trading_days_in_range = set(schedule_index)
 
     missing_dates = all_trading_days_in_range - unique_dates_set
     if missing_dates:

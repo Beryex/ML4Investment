@@ -79,10 +79,16 @@ class Settings:
         os.getenv("MODEL_OPTIMIZATION_SAMPLING_MULTIVARIATE", "true").lower() == "true"
     )
     HYPERPARAMETER_SEARCH_LIMIT: int = int(os.getenv("HYPERPARAMETER_SEARCH_LIMIT", 100))
-    PREDICT_STOCK_OPTIMIZE_METRIC: str = "overall_gain"
+    PREDICT_STOCK_OPTIMIZE_METRIC: str = "sharpe_ratio"
+    PREDICT_STOCK_OPTIMIZE_MAX_DRAWDOWN_THRESHOLD: float = 0.10
     PREDICT_STOCK_NUMBER: int = 6
 
     # Prediction
+    # strategy chosen from BUY_LONG, SELL_SHORT, ADAPT, BOTH, BUY_LONG_FIRST
+    STOCK_SELECTION_STRATEGY: str = os.getenv("STOCK_SELECTION_STRATEGY", "BUY_LONG_FIRST")
+    STOCK_SELECTION_MOMENTUM: float = min(
+        max(float(os.getenv("STOCK_SELECTION_MOMENTUM", 0.0)), 0.0), 1.0
+    )
     NUMBER_OF_STOCKS_TO_BUY: int = 1
     OPENING_STATUS: set[str] = {"PENDING_ACTIVATION", "WORKING", "OPEN", "QUEUED"}
 

@@ -233,6 +233,8 @@ def train(
         logger.info(
             f"Using {settings.PREDICT_STOCK_OPTIMIZE_METRIC} "
             f"as the predict stocks optimization metric "
+            f"with max drawdown threshold "
+            f"{settings.PREDICT_STOCK_OPTIMIZE_MAX_DRAWDOWN_THRESHOLD} "
             f"with target number {settings.PREDICT_STOCK_NUMBER}"
         )
 
@@ -354,9 +356,7 @@ if __name__ == "__main__":
         type=str,
         default="data/prod_model_hyperparams.json",
     )
-    parser.add_argument(
-        "--save_predict_stocks_pth", type=str, default="config/predict_stocks.json"
-    )
+    parser.add_argument("--save_predict_stocks_pth", type=str, default="data/predict_stocks.json")
 
     parser.add_argument("--verbose", "-v", action="store_true", default=False)
     parser.add_argument("--seed", "-s", type=int, default=settings.SEED)

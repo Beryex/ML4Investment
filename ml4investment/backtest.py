@@ -12,7 +12,8 @@ from ml4investment.config.global_settings import settings
 from ml4investment.utils.feature_calculating import calculate_features
 from ml4investment.utils.feature_processing import process_features_for_backtest
 from ml4investment.utils.logging import configure_logging, setup_wandb
-from ml4investment.utils.utils import get_detailed_static_result, set_random_seed
+from ml4investment.utils.model_backtesting import get_detailed_static_result
+from ml4investment.utils.utils import set_random_seed
 
 
 def backtest(
@@ -96,7 +97,7 @@ def backtest(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
-    parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
+    parser.add_argument("--predict_stocks", "-ps", type=str, default="data/predict_stocks.json")
     parser.add_argument(
         "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
     )

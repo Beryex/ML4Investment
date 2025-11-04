@@ -14,6 +14,10 @@ from ml4investment.config.global_settings import settings
 from ml4investment.utils.feature_calculating import calculate_features
 from ml4investment.utils.feature_processing import process_features_for_predict
 from ml4investment.utils.logging import configure_logging, setup_wandb
+from ml4investment.utils.model_predicting import (
+    get_prev_actual_ranking,
+    get_stocks_portfolio,
+)
 from ml4investment.utils.utils import (
     id_to_stock_code,
     perform_schwab_trade,
@@ -61,7 +65,7 @@ def predict(
         "Recommended Weight",
         "Recommended Investment Value",
         "Last Price",
-        "Recommended Buy in number",
+        "Recommended Number",
     ]
     predict_table = PrettyTable()
     predict_table.field_names = field_names
@@ -86,35 +90,40 @@ def predict(
         sorted_results["stock_code"].map(stock_last_prices).astype(float)
     )
 
-    recommended_df = (
-        sorted_results[sorted_results["prediction"] > 0]
-        .head(settings.NUMBER_OF_STOCKS_TO_BUY)
-        .copy()
+    logger.info(f"Selecting stocks using strategy: {settings.STOCK_SELECTION_STRATEGY}")
+    logger.info(f"Using momentum weight: {settings.STOCK_SELECTION_MOMENTUM:.2f}")
+    current_ts = sorted_results.index.max()
+    prev_actuals = get_prev_actual_ranking(
+        stock_codes=sorted_results["stock_code"],
+        historical_df=daily_features_data,
+        current_ts=current_ts,
+        actual_col="Target",
     )
+    recommended_df = get_stocks_portfolio(sorted_results, prev_actuals=prev_actuals)
 
     if recommended_df.empty:
-        logger.info("No stocks were recommended today (no positive predicted returns)")
-        recommended_df["weight"] = 0.0
-        stock_to_buy_in = {}
+        logger.info("No stocks were recommended today (strategy produced no candidates)")
+        stock_to_execute = {}
     else:
         logger.info(f"Give recommendation based on total investment value: ${total_balance:.2f}")
-        total_pred_sum = recommended_df["prediction"].sum()
-        recommended_df["weight"] = recommended_df["prediction"] / total_pred_sum
 
         recommended_df["invest_value"] = total_balance * recommended_df["weight"]
-        recommended_df["shares_to_buy"] = (
+        recommended_df["shares_to_execute"] = (
             recommended_df["invest_value"] / recommended_df["last_price"]
         ).apply(math.floor)
-        stock_to_buy_in = recommended_df.set_index("stock_code")["shares_to_buy"].to_dict()
+
+        stock_to_execute = recommended_df.set_index("stock_code")[
+            ["shares_to_execute", "action"]
+        ].to_dict("index")
 
         for _, row in recommended_df.iterrows():
             table_row = [
-                row["stock_code"],
+                f"{row['stock_code']} ({row['action']})",
                 f"{row['prediction']:+.2%}",
                 f"{row['weight']:.2%}",
                 f"${row['invest_value']:.2f}",
                 f"${row['last_price']:.2f}",
-                row["shares_to_buy"],
+                row["shares_to_execute"],
             ]
             predict_table.add_row(table_row, divider=True)
             wandb_table.add_data(*table_row)
@@ -125,7 +134,7 @@ def predict(
         ]
         for _, row in rejected_stocks.iterrows():
             table_row = [
-                row["stock_code"],
+                f"{row['stock_code']} (SKIP)",
                 f"{row['prediction']:+.2%}",
                 "0.00%",
                 "$0.00",
@@ -136,13 +145,25 @@ def predict(
             wandb_table.add_data(*table_row)
 
     if args.verbose or not recommended_df.empty:
-        title = f"Suggested top {len(recommended_df)} stocks to buy:"
+        title = f"Suggested top {len(recommended_df)} positions:"
         logger.info(f"\n{predict_table.get_string(title=title)}")
 
     wandb.log({"daily_predictions": wandb_table})
 
     if args.perform_trading:
-        perform_schwab_trade(client, account_hash, stock_to_buy_in)
+        actionable_plan: dict[str, dict[str, int | str]] = {}
+        for stock, info in stock_to_execute.items():
+            shares = int(info.get("shares_to_execute", 0))
+            if shares <= 0:
+                continue
+            actionable_plan[str(stock)] = {
+                "shares_to_execute": shares,
+                "action": str(info.get("action", "")),
+            }
+        if not actionable_plan:
+            logger.info("No trades to execute after filtering zero-share positions.")
+        else:
+            perform_schwab_trade(client, account_hash, actionable_plan)
 
     run.finish()
 
@@ -152,7 +173,7 @@ def predict(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", "-ts", type=str, default="config/train_stocks.json")
-    parser.add_argument("--predict_stocks", "-ps", type=str, default="config/predict_stocks.json")
+    parser.add_argument("--predict_stocks", "-ps", type=str, default="data/predict_stocks.json")
     parser.add_argument(
         "--fetched_data_pth", "-fdp", type=str, default="data/fetched_data.parquet"
     )

@@ -4,6 +4,10 @@
 set -e
 
 current_date=$(date +%Y-%m-%d)
+PREDICT_STOCKS_PATH="data/predict_stocks_opt.json"
+PROCESS_FEATURE_CONFIG_PATH="data/prod_process_feature_config_opt.pkl"
+FEATURES_PATH="data/prod_features_opt.json"
+MODEL_PATH="data/prod_model_opt.model"
 
 echo "Starting daily usage run at $(date)"
 
@@ -20,13 +24,24 @@ echo "Step 2: Backtesting..."
 export WANDB_MODE=online
 export WANDB_RUN_NAME="date-${current_date}-backtest"
 export WANDB_JOB_TYPE="backtest"
-python backtest.py -v
+python backtest.py \
+    -ps "${PREDICT_STOCKS_PATH}" \
+    -pfcp "${PROCESS_FEATURE_CONFIG_PATH}" \
+    -fp "${FEATURES_PATH}" \
+    -mp "${MODEL_PATH}" \
+    -v
 
 echo "Step 3: Predicting..."
 export WANDB_MODE=online
 export WANDB_RUN_NAME="date-${current_date}-predict"
 export WANDB_JOB_TYPE="predict"
-python predict.py -pt -v
+python predict.py \
+    -ps "${PREDICT_STOCKS_PATH}" \
+    -pfcp "${PROCESS_FEATURE_CONFIG_PATH}" \
+    -fp "${FEATURES_PATH}" \
+    -mp "${MODEL_PATH}" \
+    -pt \
+    -v
 
 echo "" # Add a blank line for readability
 

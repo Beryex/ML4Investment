@@ -84,7 +84,7 @@ def predict(
     sorted_results = results_df.sort_values("prediction", ascending=False)
     stock_quotes = client.quotes(symbols=predict_stock_list, fields="quote").json()
     stock_last_prices = {
-        stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items()
+        stock: quote["quote"]["lastPrice"] for stock, quote in stock_quotes.items() if "quote" in quote
     }
     sorted_results["last_price"] = (
         sorted_results["stock_code"].map(stock_last_prices).astype(float)

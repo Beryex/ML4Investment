@@ -211,6 +211,18 @@ def process_features_for_backtest(
     test_end = pd.to_datetime(
         settings.TESTING_DATA_END_DATE or pd.Timestamp.now(tz="America/New_York")
     )
+    index_tz = daily_features_df.index.tz   # type: ignore
+    if index_tz is not None:
+        test_start = test_start.tz_convert(index_tz)
+        if test_end.tzinfo is None:
+            test_end = test_end.tz_localize(index_tz)
+        else:
+            test_end = test_end.tz_convert(index_tz)
+    else:
+        if test_start.tzinfo is not None:
+            test_start = test_start.tz_convert(None)
+        if test_end.tzinfo is not None:
+            test_end = test_end.tz_convert(None)
     logger.info(f"Using data from {test_start} to {test_end} for backtesting.")
 
     mask = (daily_features_df.index >= test_start) & (daily_features_df.index <= test_end)
@@ -285,7 +297,9 @@ def process_features_for_predict(
         latest_df = latest_df[latest_df.index == max_ts]
 
     assert latest_df.index.min() == latest_df.index.max()
-    predict_df = latest_df[latest_df["stock_code"].isin(predict_stock_list)]
+    predict_df = latest_df.loc[
+        latest_df["stock_code"].isin(predict_stock_list)
+    ].copy()
     original_data_points = len(predict_df)
 
     predict_df["stock_id"] = predict_df["stock_id"].astype(config_data["cat_stock_id_type"])

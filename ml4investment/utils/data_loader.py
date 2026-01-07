@@ -318,15 +318,30 @@ def load_local_data(
         if item.is_dir() and item.name.isdigit():
             year_folders.append(int(item.name))
 
-    start_date = datetime.date.fromisoformat(settings.TRAINING_DATA_START_DATE)
-    earliest_year = start_date.year
-    if settings.TESTING_DATA_END_DATE is not None:
-        end_date = datetime.date.fromisoformat(settings.TESTING_DATA_END_DATE)
+    start_date = pd.to_datetime(settings.TRAINING_DATA_START_DATE)
+    if start_date.tzinfo is None:
+        start_date = start_date.tz_localize("America/New_York")
     else:
-        end_date = datetime.date.today()
+        start_date = start_date.tz_convert("America/New_York")
+    earliest_year = start_date.year
+
+    end_date_value = settings.TESTING_DATA_END_DATE
+    end_date_is_date_only = (
+        isinstance(end_date_value, str)
+        and " " not in end_date_value
+        and "T" not in end_date_value
+    )
+    if end_date_value is not None:
+        end_date = pd.to_datetime(end_date_value)
+    else:
+        end_date = pd.Timestamp.now(tz="America/New_York")
+    if end_date.tzinfo is None:
+        end_date = end_date.tz_localize("America/New_York")
+    else:
+        end_date = end_date.tz_convert("America/New_York")
+    if end_date_value is not None and end_date_is_date_only:
+        end_date = end_date.normalize() + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
     latest_year = end_date.year
-    start_date = pd.Timestamp(start_date, tz="America/New_York")
-    end_date = pd.Timestamp(end_date, tz="America/New_York")
     logger.info(f"Filtering data between {start_date} and {end_date}")
 
     with tqdm(stocks, desc="Fetch stocks data") as pbar:

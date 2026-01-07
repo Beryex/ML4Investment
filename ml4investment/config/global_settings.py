@@ -1,7 +1,10 @@
 import json
 import os
 from typing import Dict, List, Optional
+from pathlib import Path
 
+
+CONFIG_DIR = Path(__file__).resolve().parent
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"
@@ -34,7 +37,10 @@ class Settings:
         "Basic Materials": 11,
         "Others": 12,
     }
-    STOCK_SECTOR_ID_MAP_PTH: str = "config/stock_sector_id_mapping.json"
+    STOCK_SECTOR_ID_MAP_PTH = os.getenv(
+        "STOCK_SECTOR_ID_MAP_PTH",
+        str(CONFIG_DIR / "stock_sector_id_mapping.json"),
+    )
     STOCK_SECTOR_ID_MAP: Dict[str, int] = json.load(open(STOCK_SECTOR_ID_MAP_PTH, "r"))
     APPLY_CLIP: str = os.getenv("APPLY_CLIP", "skip")
     APPLY_SCALE: str = os.getenv("APPLY_SCALE", "skip")

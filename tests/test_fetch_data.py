@@ -24,9 +24,9 @@ def test_process_raw_data_valid(make_intraday_df):
 
 
 def test_process_raw_data_pads_short_day(make_intraday_df):
-    df = make_intraday_df(
-        "AAPL", "2024-06-04", periods=settings.DATA_PER_DAY - 1
-    ).drop(columns=["stock_code"])
+    df = make_intraday_df("AAPL", "2024-06-04", periods=settings.DATA_PER_DAY - 1).drop(
+        columns=["stock_code"]
+    )
     processed, msg = process_raw_data(df, "AAPL", interval_mins=30)
 
     assert processed is not None

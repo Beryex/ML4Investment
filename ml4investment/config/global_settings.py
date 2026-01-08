@@ -1,10 +1,10 @@
 import json
 import os
-from typing import Dict, List, Optional
 from pathlib import Path
-
+from typing import Dict, List, Optional
 
 CONFIG_DIR = Path(__file__).resolve().parent
+
 
 class Settings:
     PROJECT_NAME: str = "ml4investment"

@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 from multiprocessing import cpu_count
+from typing import Any
 
 import pandas as pd
 import wandb
@@ -23,31 +24,422 @@ from ml4investment.utils.model_training import (
 )
 from ml4investment.utils.utils import set_random_seed
 
+logger = logging.getLogger(__name__)
 
-def train(
-    run: Run,
-    train_stock_list: list,
-    target_stock_list: list,
-    fetched_data_df: pd.DataFrame,
-    seed: int,
-):
-    """Train model based on the given stocks"""
-    logger.info(f"Start training model given stocks: {train_stock_list}")
-    logger.info(f"Current trading time: {pd.Timestamp.now(tz='America/New_York')}")
-    set_random_seed(seed)
 
-    """ 1. Load necessary data """
+def _load_json_file(path: str) -> dict[str, Any]:
+    """Load a JSON file from disk.
+
+    Args:
+        path: JSON file path.
+
+    Returns:
+        Parsed JSON as a dictionary.
+    """
+    with open(path, "r") as file_handle:
+        return json.load(file_handle)
+
+
+def _save_json_file(path: str, payload: dict[str, Any]) -> None:
+    """Save a dictionary payload to JSON.
+
+    Args:
+        path: JSON file path.
+        payload: Dictionary to write.
+    """
+    with open(path, "w") as file_handle:
+        json.dump(payload, file_handle, indent=4)
+
+
+def _build_default_model_hyperparams(seed: int) -> dict[str, Any]:
+    """Build default model hyperparameters with runtime settings.
+
+    Args:
+        seed: Random seed.
+
+    Returns:
+        Model hyperparameter dictionary.
+    """
+    model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
+    model_hyperparams.update({"seed": seed})
+    model_hyperparams.update({"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)})
+    return model_hyperparams
+
+
+def _load_training_data(
+    fetched_data_df: pd.DataFrame, train_stock_list: list[str]
+) -> pd.DataFrame:
+    """Filter fetched data for the training stock list and date window.
+
+    Args:
+        fetched_data_df: Raw fetched intraday data.
+        train_stock_list: Stock codes used for training.
+
+    Returns:
+        Filtered intraday DataFrame.
+    """
     train_data_start_date = settings.TRAINING_DATA_START_DATE
     validation_data_end_date = settings.VALIDATION_DATA_END_DATE
     logger.info(
-        f"Load input fetched data, starting from {train_data_start_date} "
-        f"to {validation_data_end_date}"
+        "Load input fetched data, starting from %s to %s",
+        train_data_start_date,
+        validation_data_end_date,
     )
     train_data_df = fetched_data_df[fetched_data_df["stock_code"].isin(train_stock_list)]
-    train_data_df = train_data_df.loc[train_data_start_date:validation_data_end_date]
+    return train_data_df.loc[train_data_start_date:validation_data_end_date]
 
-    """ 2. Calculate and process features for all data used """
+
+def _prepare_feature_data(
+    train_data_df: pd.DataFrame, seed: int
+) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series, dict[str, Any]]:
+    """Calculate and process features for training/validation.
+
+    Args:
+        train_data_df: Filtered intraday data for training.
+        seed: Random seed.
+
+    Returns:
+        Tuple of (X_train, y_train, X_validate, y_validate, config).
+    """
     daily_features_df = calculate_features(train_data_df)
+    return process_features_for_train_and_validate(
+        daily_features_df,
+        apply_clip=settings.APPLY_CLIP,
+        apply_scale=settings.APPLY_SCALE,
+        seed=seed,
+    )
+
+
+def _apply_feature_selection(
+    X_train: pd.DataFrame,
+    X_validate: pd.DataFrame,
+    args: argparse.Namespace,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Load or initialize feature selection for model training.
+
+    Args:
+        X_train: Training feature DataFrame.
+        X_validate: Validation feature DataFrame.
+        args: CLI arguments.
+
+    Returns:
+        Tuple of (X_train, X_validate, selected_features).
+    """
+    if args.optimize_features:
+        logger.info("Optimize model features from the scratch, using all features initially")
+        optimal_features = X_train.columns.tolist()
+        return X_train, X_validate, optimal_features
+
+    try:
+        logger.info("Attempting to load input model features from %s", args.features_pth)
+        optimal_features = _load_json_file(args.features_pth)["features"]
+        logger.info("Successfully loaded features.")
+        return X_train[optimal_features], X_validate[optimal_features], optimal_features
+    except Exception as exc:
+        logger.warning(
+            "Failed to load features from %s. Error: %s. Falling back to using all features.",
+            args.features_pth,
+            exc,
+        )
+        optimal_features = X_train.columns.tolist()
+        return X_train, X_validate, optimal_features
+
+
+def _resolve_model_hyperparams(args: argparse.Namespace, seed: int) -> dict[str, Any]:
+    """Load or initialize model hyperparameters.
+
+    Args:
+        args: CLI arguments.
+        seed: Random seed.
+
+    Returns:
+        Model hyperparameter dictionary.
+    """
+    if args.optimize_model_hyperparameters:
+        logger.info("Optimize model hyperparameters from the scratch")
+        return _build_default_model_hyperparams(seed)
+
+    try:
+        logger.info(
+            "Attempting to load input model hyperparameters from %s",
+            args.model_hyperparams_pth,
+        )
+        optimal_model_hyperparams = _load_json_file(args.model_hyperparams_pth)
+        logger.info("Successfully loaded model hyperparameters.")
+        return optimal_model_hyperparams
+    except Exception as exc:
+        logger.warning(
+            "Failed to load model hyperparameters from %s. Error: %s. "
+            "Falling back to default hyperparameters.",
+            args.model_hyperparams_pth,
+            exc,
+        )
+        return _build_default_model_hyperparams(seed)
+
+
+def _resolve_sampling_proportion(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_validate: pd.DataFrame,
+    y_validate: pd.Series,
+    train_stock_list: list[str],
+    model_hyperparams: dict[str, Any],
+    args: argparse.Namespace,
+    seed: int,
+) -> dict[str, float]:
+    """Load or optimize data sampling proportions.
+
+    Args:
+        X_train: Training feature DataFrame.
+        y_train: Training target Series.
+        X_validate: Validation feature DataFrame.
+        y_validate: Validation target Series.
+        train_stock_list: Stock codes used for training.
+        model_hyperparams: Model hyperparameters.
+        args: CLI arguments.
+        seed: Random seed.
+
+    Returns:
+        Sampling proportion mapping by stock code.
+    """
+    if args.optimize_data_sampling_proportion:
+        logger.info("Optimize data sampling proportion from the scratch")
+        return optimize_data_sampling_proportion(
+            X_train,
+            y_train,
+            X_validate,
+            y_validate,
+            train_stock_list=train_stock_list,
+            categorical_features=settings.CATEGORICAL_FEATURES,
+            model_hyperparams=model_hyperparams,
+            given_data_sampling_proportion_pth=args.data_sampling_proportion_pth,
+            seed=seed,
+            verbose=args.verbose,
+        )
+
+    try:
+        logger.info(
+            "Attempting to load input data sampling proportion from %s",
+            args.data_sampling_proportion_pth,
+        )
+        sampling_proportion = _load_json_file(args.data_sampling_proportion_pth)
+        logger.info("Successfully loaded data sampling proportion.")
+        return sampling_proportion
+    except Exception as exc:
+        logger.warning(
+            "Failed to load data sampling proportion from %s. Error: %s. "
+            "Falling back to use all data.",
+            args.data_sampling_proportion_pth,
+            exc,
+        )
+        return {stock: 1.0 for stock in train_stock_list if stock not in settings.SELECTIVE_ETF}
+
+
+def _maybe_optimize_features(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_validate: pd.DataFrame,
+    y_validate: pd.Series,
+    model_hyperparams: dict[str, Any],
+    args: argparse.Namespace,
+    seed: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Optionally optimize the feature subset using Optuna.
+
+    Args:
+        X_train: Training feature DataFrame.
+        y_train: Training target Series.
+        X_validate: Validation feature DataFrame.
+        y_validate: Validation target Series.
+        model_hyperparams: Model hyperparameters.
+        args: CLI arguments.
+        seed: Random seed.
+
+    Returns:
+        Tuple of (X_train, X_validate, selected_features).
+    """
+    if not args.optimize_features:
+        return X_train, X_validate, X_train.columns.tolist()
+
+    optimal_features = optimize_features(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        all_features=X_train.columns.tolist(),
+        categorical_features=settings.CATEGORICAL_FEATURES,
+        given_features_pth=args.features_pth,
+        model_hyperparams=model_hyperparams,
+        seed=seed,
+        verbose=args.verbose,
+    )
+    return X_train[optimal_features], X_validate[optimal_features], optimal_features
+
+
+def _maybe_optimize_model_hyperparams(
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+    X_validate: pd.DataFrame,
+    y_validate: pd.Series,
+    model_hyperparams: dict[str, Any],
+    args: argparse.Namespace,
+    seed: int,
+) -> dict[str, Any]:
+    """Optionally optimize model hyperparameters.
+
+    Args:
+        X_train: Training feature DataFrame.
+        y_train: Training target Series.
+        X_validate: Validation feature DataFrame.
+        y_validate: Validation target Series.
+        model_hyperparams: Existing model hyperparameters.
+        args: CLI arguments.
+        seed: Random seed.
+
+    Returns:
+        Updated model hyperparameters.
+    """
+    if not args.optimize_model_hyperparameters:
+        return model_hyperparams
+
+    return optimize_model_hyperparameters(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        categorical_features=settings.CATEGORICAL_FEATURES,
+        given_model_hyperparams_pth=args.model_hyperparams_pth,
+        seed=seed,
+        verbose=args.verbose,
+    )
+
+
+def _log_dataset_summary(X_train: pd.DataFrame, X_validate: pd.DataFrame) -> None:
+    """Log dataset summaries for training and validation.
+
+    Args:
+        X_train: Training feature DataFrame.
+        X_validate: Validation feature DataFrame.
+    """
+    logger.info("Oldest date in training data: %s", X_train.index.min())
+    logger.info("Newest date in training data: %s", X_train.index.max())
+    logger.info("Total processed samples in training data: %s", X_train.shape[0])
+    logger.info("Number of features in training data: %s", X_train.shape[1])
+
+    logger.info("Oldest date in validation data: %s", X_validate.index.min())
+    logger.info("Newest date in validation data: %s", X_validate.index.max())
+    logger.info("Total processed samples in validation data: %s", X_validate.shape[0])
+    logger.info("Number of features in validation data: %s", X_validate.shape[1])
+
+
+def _select_predict_stocks(
+    sorted_stocks: list[str], target_stock_list: list[str], args: argparse.Namespace
+) -> list[str]:
+    """Select prediction stock list based on validation ranking.
+
+    Args:
+        sorted_stocks: Stock list ranked by validation metrics.
+        target_stock_list: Default target stocks.
+        args: CLI arguments.
+
+    Returns:
+        List of selected stock codes.
+    """
+    if args.optimize_predict_stocks:
+        logger.info("Begin predict stocks optimization")
+        logger.info(
+            "Using %s as the predict stocks optimization metric with max drawdown threshold %s "
+            "with target number %s",
+            settings.PREDICT_STOCK_OPTIMIZE_METRIC,
+            settings.PREDICT_STOCK_OPTIMIZE_MAX_DRAWDOWN_THRESHOLD,
+            settings.PREDICT_STOCK_NUMBER,
+        )
+
+        predict_stock_list = sorted_stocks[: settings.PREDICT_STOCK_NUMBER]
+        logger.info(
+            "Selected %d stocks for prediction: %s",
+            len(predict_stock_list),
+            ", ".join(predict_stock_list),
+        )
+        return predict_stock_list
+
+    logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
+    return target_stock_list
+
+
+def _save_training_artifacts(
+    process_feature_config: dict[str, Any],
+    optimal_data_sampling_proportion: dict[str, float],
+    optimal_features: list[str],
+    optimal_model_hyperparams: dict[str, Any],
+    predict_stock_list: list[str],
+    args: argparse.Namespace,
+) -> None:
+    """Persist artifacts created during training.
+
+    Args:
+        process_feature_config: Feature processing configuration.
+        optimal_data_sampling_proportion: Sampling proportion mapping.
+        optimal_features: Selected feature names.
+        optimal_model_hyperparams: Model hyperparameters.
+        predict_stock_list: Selected prediction stock list.
+        args: CLI arguments.
+    """
+    os.makedirs(os.path.dirname(args.save_process_feature_config_pth), exist_ok=True)
+    with open(args.save_process_feature_config_pth, "wb") as file_handle:
+        pickle.dump(process_feature_config, file_handle)
+    logger.info(
+        "Processing features configuration saved to %s", args.save_process_feature_config_pth
+    )
+
+    os.makedirs(os.path.dirname(args.save_model_pth), exist_ok=True)
+    optimal_model_hyperparams_path = args.save_model_hyperparams_pth
+
+    os.makedirs(os.path.dirname(args.save_data_sampling_proportion_pth), exist_ok=True)
+    _save_json_file(args.save_data_sampling_proportion_pth, optimal_data_sampling_proportion)
+    logger.info(
+        "Optimized data sampling proportion saved to %s",
+        args.save_data_sampling_proportion_pth,
+    )
+
+    os.makedirs(os.path.dirname(args.save_features_pth), exist_ok=True)
+    _save_json_file(args.save_features_pth, {"features": optimal_features})
+    logger.info("Optimized features saved to %s", args.save_features_pth)
+
+    os.makedirs(os.path.dirname(optimal_model_hyperparams_path), exist_ok=True)
+    _save_json_file(optimal_model_hyperparams_path, optimal_model_hyperparams)
+    logger.info("Optimized model hyperparameters saved to %s", optimal_model_hyperparams_path)
+
+    os.makedirs(os.path.dirname(args.save_predict_stocks_pth), exist_ok=True)
+    _save_json_file(args.save_predict_stocks_pth, {"predict_stocks": predict_stock_list})
+    logger.info("Predict stocks saved to %s", args.save_predict_stocks_pth)
+
+    return
+
+
+def train(
+    run: Run,
+    train_stock_list: list[str],
+    target_stock_list: list[str],
+    fetched_data_df: pd.DataFrame,
+    seed: int,
+    args: argparse.Namespace,
+) -> None:
+    """Train model based on the given stocks.
+
+    Args:
+        run: Active W&B run.
+        train_stock_list: Stock codes used for training.
+        target_stock_list: Stock codes eligible for prediction.
+        fetched_data_df: Intraday fetched data.
+        seed: Random seed.
+        args: CLI arguments.
+    """
+    logger.info("Start training model given stocks: %s", train_stock_list)
+    logger.info("Current trading time: %s", pd.Timestamp.now(tz="America/New_York"))
+    set_random_seed(seed)
+
+    train_data_df = _load_training_data(fetched_data_df, train_stock_list)
 
     (
         X_train,
@@ -55,99 +447,30 @@ def train(
         X_validate,
         y_validate,
         process_feature_config,
-    ) = process_features_for_train_and_validate(
-        daily_features_df,
-        apply_clip=settings.APPLY_CLIP,
-        apply_scale=settings.APPLY_SCALE,
-        seed=seed,
+    ) = _prepare_feature_data(train_data_df, seed)
+
+    X_train, X_validate, optimal_features = _apply_feature_selection(X_train, X_validate, args)
+
+    optimal_model_hyperparams = _resolve_model_hyperparams(args, seed)
+    logger.info(
+        "Training model with objective: %s",
+        optimal_model_hyperparams.get("objective"),
+    )
+    logger.info(
+        "Training model with optimize metric: %s",
+        optimal_model_hyperparams.get("metric"),
     )
 
-    """ 3. Load data sampling proportion, features and hyperparameters """
-    if args.optimize_features:
-        logger.info("Optimize model features from the scratch, using all features initially")
-        optimal_features = X_train.columns.tolist()
-    else:
-        try:
-            logger.info(f"Attempting to load input model features from {args.features_pth}")
-            optimal_features = json.load(open(args.features_pth, "r"))["features"]
-
-            logger.info("Successfully loaded features.")
-            X_train = X_train[optimal_features]
-            X_validate = X_validate[optimal_features]
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to load features from {args.features_pth}. Error: {e}. "
-                f"Falling back to using all features."
-            )
-            optimal_features = X_train.columns.tolist()
-
-    if args.optimize_model_hyperparameters:
-        logger.info("Optimize model hyperparameters from the scratch")
-        optimal_model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
-        optimal_model_hyperparams.update({"seed": seed})
-        optimal_model_hyperparams.update(
-            {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
-        )
-    else:
-        try:
-            logger.info(
-                f"Attempting to load input model hyperparameters from {args.model_hyperparams_pth}"
-            )
-            optimal_model_hyperparams = json.load(open(args.model_hyperparams_pth, "r"))
-            logger.info("Successfully loaded model hyperparameters.")
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to load model hyperparameters from {args.model_hyperparams_pth}. "
-                f"Error: {e}. "
-                f"Falling back to default hyperparameters."
-            )
-            optimal_model_hyperparams = settings.FIXED_TRAINING_CONFIG.copy()
-            optimal_model_hyperparams.update({"seed": seed})
-            optimal_model_hyperparams.update(
-                {"num_threads": min(max(1, cpu_count()), settings.MAX_NUM_PROCESSES)}
-            )
-
-    logger.info(f"Training model with objective: {optimal_model_hyperparams['objective']}")
-    logger.info(f"Training model with optimize metric: {optimal_model_hyperparams['metric']}")
-
-    """ 4. Optimize data sampling proportion if required """
-    if args.optimize_data_sampling_proportion:
-        logger.info("Optimize data sampling proportion from the scratch")
-        optimal_data_sampling_proportion = optimize_data_sampling_proportion(
-            X_train,
-            y_train,
-            X_validate,
-            y_validate,
-            train_stock_list=train_stock_list,
-            categorical_features=settings.CATEGORICAL_FEATURES,
-            model_hyperparams=optimal_model_hyperparams,
-            given_data_sampling_proportion_pth=args.data_sampling_proportion_pth,
-            seed=seed,
-            verbose=args.verbose,
-        )
-    else:
-        try:
-            logger.info(
-                f"Attempting to load input data sampling proportion "
-                f"from {args.data_sampling_proportion_pth}"
-            )
-            optimal_data_sampling_proportion = json.load(
-                open(args.data_sampling_proportion_pth, "r")
-            )
-            logger.info("Successfully loaded data sampling proportion.")
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to load data sampling proportion "
-                f"from {args.data_sampling_proportion_pth}. "
-                f"Error: {e}. "
-                f"Falling back to use all data."
-            )
-            optimal_data_sampling_proportion = {
-                stock: 1.0 for stock in train_stock_list if stock not in settings.SELECTIVE_ETF
-            }
+    optimal_data_sampling_proportion = _resolve_sampling_proportion(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        train_stock_list=train_stock_list,
+        model_hyperparams=optimal_model_hyperparams,
+        args=args,
+        seed=seed,
+    )
 
     X_train, y_train = sample_training_data(
         X_train,
@@ -156,46 +479,27 @@ def train(
         seed=seed,
     )
 
-    """ 5. Optimize features if required """
-    if args.optimize_features:
-        optimal_features = optimize_features(
-            X_train,
-            y_train,
-            X_validate,
-            y_validate,
-            all_features=X_train.columns.tolist(),
-            categorical_features=settings.CATEGORICAL_FEATURES,
-            given_features_pth=args.features_pth,
-            model_hyperparams=optimal_model_hyperparams,
-            seed=seed,
-            verbose=args.verbose,
-        )
-        X_train = X_train[optimal_features]
-        X_validate = X_validate[optimal_features]
+    X_train, X_validate, optimal_features = _maybe_optimize_features(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        model_hyperparams=optimal_model_hyperparams,
+        args=args,
+        seed=seed,
+    )
 
-    """ 6. Optimize the model hyperparameters if required """
-    if args.optimize_model_hyperparameters:
-        optimal_model_hyperparams = optimize_model_hyperparameters(
-            X_train,
-            y_train,
-            X_validate,
-            y_validate,
-            categorical_features=settings.CATEGORICAL_FEATURES,
-            given_model_hyperparams_pth=args.model_hyperparams_pth,
-            seed=seed,
-            verbose=args.verbose,
-        )
+    optimal_model_hyperparams = _maybe_optimize_model_hyperparams(
+        X_train,
+        y_train,
+        X_validate,
+        y_validate,
+        optimal_model_hyperparams,
+        args,
+        seed,
+    )
 
-    """ 7. Train, validate the final model and apply prediction stock optimization if required """
-    logger.info(f"Oldest date in training data: {X_train.index.min()}")
-    logger.info(f"Newest date in training data: {X_train.index.max()}")
-    logger.info(f"Total processed samples in training data: {X_train.shape[0]}")
-    logger.info(f"Number of features in training data: {X_train.shape[1]}")
-
-    logger.info(f"Oldest date in validation data: {X_validate.index.min()}")
-    logger.info(f"Newest date in validation data: {X_validate.index.max()}")
-    logger.info(f"Total processed samples in validation data: {X_validate.shape[0]}")
-    logger.info(f"Number of features in validation data: {X_validate.shape[1]}")
+    _log_dataset_summary(X_train, X_validate)
 
     final_model, _ = model_training(
         X_train,
@@ -228,60 +532,20 @@ def train(
         verbose=args.verbose,
     )
 
-    if args.optimize_predict_stocks:
-        logger.info("Begin predict stocks optimization")
-        logger.info(
-            f"Using {settings.PREDICT_STOCK_OPTIMIZE_METRIC} "
-            f"as the predict stocks optimization metric "
-            f"with max drawdown threshold "
-            f"{settings.PREDICT_STOCK_OPTIMIZE_MAX_DRAWDOWN_THRESHOLD} "
-            f"with target number {settings.PREDICT_STOCK_NUMBER}"
-        )
-
-        predict_stock_list = sorted_stocks[: settings.PREDICT_STOCK_NUMBER]
-        logger.info(
-            f"Selected {len(predict_stock_list)} stocks for prediction: "
-            f"{', '.join(predict_stock_list)}"
-        )
-    else:
-        logger.info("No predict stocks optimization. Using all target stocks as predict stocks")
-        predict_stock_list = target_stock_list
-
-    """ 8. Save all results"""
-    os.makedirs(os.path.dirname(args.save_process_feature_config_pth), exist_ok=True)
-    with open(args.save_process_feature_config_pth, "wb") as f:
-        pickle.dump(process_feature_config, f)
-    logger.info(
-        f"Processing features configuration saved to {args.save_process_feature_config_pth}"
-    )
+    predict_stock_list = _select_predict_stocks(sorted_stocks, target_stock_list, args)
 
     os.makedirs(os.path.dirname(args.save_model_pth), exist_ok=True)
     final_model.save_model(args.save_model_pth)
-    logger.info(f"Model saved to {args.save_model_pth}")
+    logger.info("Model saved to %s", args.save_model_pth)
 
-    os.makedirs(os.path.dirname(args.save_data_sampling_proportion_pth), exist_ok=True)
-    with open(args.save_data_sampling_proportion_pth, "w") as f:
-        json.dump(optimal_data_sampling_proportion, f, indent=4)
-    logger.info(
-        f"Optimized data sampling proportion saved to {args.save_data_sampling_proportion_pth}"
+    _save_training_artifacts(
+        process_feature_config,
+        optimal_data_sampling_proportion,
+        optimal_features,
+        optimal_model_hyperparams,
+        predict_stock_list,
+        args,
     )
-
-    os.makedirs(os.path.dirname(args.save_features_pth), exist_ok=True)
-    optimal_features = {"features": optimal_features}
-    with open(args.save_features_pth, "w") as f:
-        json.dump(optimal_features, f, indent=4)
-    logger.info(f"Optimized features saved to {args.save_features_pth}")
-
-    os.makedirs(os.path.dirname(args.save_model_hyperparams_pth), exist_ok=True)
-    with open(args.save_model_hyperparams_pth, "w") as f:
-        json.dump(optimal_model_hyperparams, f, indent=4)
-    logger.info(f"Optimized model hyperparameters saved to {args.save_model_hyperparams_pth}")
-
-    predict_stocks = {"predict_stocks": predict_stock_list}
-    os.makedirs(os.path.dirname(args.save_predict_stocks_pth), exist_ok=True)
-    with open(args.save_predict_stocks_pth, "w") as f:
-        json.dump(predict_stocks, f, indent=4)
-    logger.info(f"Predict stocks saved to {args.save_predict_stocks_pth}")
 
     wandb.log(
         {
@@ -304,7 +568,42 @@ def train(
     logger.info("Training process completed.")
 
 
-if __name__ == "__main__":
+def _validate_optimization_flags(args: argparse.Namespace) -> None:
+    """Ensure only one optimization flag is enabled.
+
+    Args:
+        args: CLI arguments.
+    """
+    activated_optimizations = [
+        args.optimize_data_sampling_proportion,
+        args.optimize_features,
+        args.optimize_model_hyperparameters,
+    ]
+    num_activated = sum(1 for flag in activated_optimizations if flag)
+
+    if num_activated <= 1:
+        return
+
+    error_message = (
+        "Error: Only one optimization option can be active at a time. "
+        f"Detected {num_activated} active optimizations: "
+    )
+    active_options_names = []
+    if args.optimize_data_sampling_proportion:
+        active_options_names.append("optimize_data_sampling_proportion")
+    if args.optimize_features:
+        active_options_names.append("optimize_features")
+    if args.optimize_model_hyperparameters:
+        active_options_names.append("optimize_model_hyperparameters")
+
+    error_message += ", ".join(active_options_names) + ". Please enable only one."
+
+    logging.error(error_message)
+    raise ValueError(error_message)
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build the argument parser for training CLI."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_stocks", type=str, default="config/train_stocks.json")
     parser.add_argument("--target_stocks", type=str, default="config/target_stocks.json")
@@ -361,42 +660,23 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", "-v", action="store_true", default=False)
     parser.add_argument("--seed", "-s", type=int, default=settings.SEED)
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = _build_arg_parser()
     args = parser.parse_args()
 
     configure_logging(env="train", file_name="train.log")
     logger = logging.getLogger("ml4investment.train")
 
-    train_stock_list = json.load(open(args.train_stocks, "r"))["train_stocks"]
-    target_stock_list = json.load(open(args.target_stocks, "r"))["target_stocks"]
+    _validate_optimization_flags(args)
+
+    train_stock_list = _load_json_file(args.train_stocks)["train_stocks"]
+    target_stock_list = _load_json_file(args.target_stocks)["target_stocks"]
     fetched_data_df = pd.read_parquet(args.fetched_data_pth)
     seed = args.seed
 
-    activated_optimizations = [
-        args.optimize_data_sampling_proportion,
-        args.optimize_features,
-        args.optimize_model_hyperparameters,
-    ]
-
-    num_activated = sum(1 for x in activated_optimizations if x)
-
-    if num_activated > 1:
-        error_message = (
-            f"Error: Only one optimization option can be active at a time. "
-            f"Detected {num_activated} active optimizations: "
-        )
-        active_options_names = []
-        if args.optimize_data_sampling_proportion:
-            active_options_names.append("optimize_data_sampling_proportion")
-        if args.optimize_features:
-            active_options_names.append("optimize_features")
-        if args.optimize_model_hyperparameters:
-            active_options_names.append("optimize_model_hyperparameters")
-
-        error_message += ", ".join(active_options_names) + ". Please enable only one."
-
-        logging.error(error_message)
-        raise ValueError(error_message)
-
     run = setup_wandb(config=vars(args))
 
-    train(run, train_stock_list, target_stock_list, fetched_data_df, seed)
+    train(run, train_stock_list, target_stock_list, fetched_data_df, seed, args)

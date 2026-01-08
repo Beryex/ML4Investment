@@ -84,3 +84,45 @@ def test_get_stocks_portfolio_combines_momentum(monkeypatch):
 
     assert set(selected["stock_code"]) == {"AAA", "BBB"}
     assert np.isclose(selected["weight"].sum(), 1.0)
+
+
+def test_get_stocks_portfolio_both_strategy(monkeypatch):
+    monkeypatch.setattr(settings, "STOCK_SELECTION_STRATEGY", "BOTH")
+    monkeypatch.setattr(settings, "NUMBER_OF_STOCKS_TO_BUY", 2)
+
+    candidates = pd.DataFrame(
+        {
+            "stock_code": ["AAA", "BBB", "CCC"],
+            "prediction": [0.2, -0.5, 0.1],
+        }
+    )
+
+    selected = get_stocks_portfolio(candidates)
+
+    assert len(selected) == 2
+    assert set(selected["action"]) == {"BUY_LONG", "SELL_SHORT"}
+    assert np.isclose(selected["weight"].sum(), 1.0)
+
+
+def test_get_stocks_portfolio_buy_long_first(monkeypatch):
+    monkeypatch.setattr(settings, "STOCK_SELECTION_STRATEGY", "BUY_LONG_FIRST")
+    monkeypatch.setattr(settings, "NUMBER_OF_STOCKS_TO_BUY", 2)
+
+    candidates = pd.DataFrame(
+        {
+            "stock_code": ["AAA", "BBB", "CCC"],
+            "prediction": [0.3, 0.2, -0.4],
+        }
+    )
+
+    selected = get_stocks_portfolio(candidates)
+
+    assert len(selected) == 2
+    assert "BUY_LONG" in set(selected["action"])
+    assert np.isclose(selected["weight"].sum(), 1.0)
+
+
+def test_get_prev_actual_ranking_returns_empty_on_empty_stock_list():
+    df = pd.DataFrame({"stock_code": ["AAA"], "y_actual": [0.1]})
+    result = get_prev_actual_ranking(stock_codes=[], historical_df=df)
+    assert result == {}

@@ -186,3 +186,4 @@ ml4investment/results/*
 ml4investment/wandb/*
 ml4investment/tokens.json
 ml4investment/data/*
+develop.md

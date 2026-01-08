@@ -19,6 +19,7 @@ Problem Statement:
     - [Contents](#Contents)
     - [Install](#Install)
     - [Usage](#Usage)
+    - [Tests](#Tests)
     - [Experiments](#Experiments)
     - [Contribute](#Contribute)
     - [Reference](#Reference)
@@ -91,6 +92,18 @@ bash scripts/daily_usage.sh
 ```
 
 This will fetch the latest U.S. stock data, run the backtest of current model, generate predictions for the price change ratio from the next trading day's open price to the subsequent day's open price and automatically place the orders.
+
+## Tests
+
+Run the test suite from the repository root:
+```bash
+pytest
+```
+
+For a more verbose run (matching the current development workflow):
+```bash
+python -m pytest -l -v -s
+```
 
 ### Develop Your Own Algorithm
 
